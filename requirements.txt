@@ -1,0 +1,11 @@
+# Keep ADK/aiplatform pinned to the SAME versions as agent_requirements in
+# deploy_to_agent_engine.py — AdkApp pickles the agent locally and unpickles it in
+# the Agent Engine container; a version skew causes runtime errors
+# (e.g. "'coroutine' object has no attribute 'id'").
+google-cloud-aiplatform[agent_engines,adk]==1.148.1
+google-adk[a2a]==1.31.1
+a2a-sdk>=0.3.4,<0.4
+python-dotenv>=1.0.0
+google-cloud-secret-manager
+google-cloud-storage
+cloudpickle
