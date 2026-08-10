@@ -6,32 +6,32 @@ age group, and are boosted/highlighted by interest overlap.
 """
 from __future__ import annotations
 
-# id, name, category, gender (any|men|women), age_group (any|kid|teen|adult|senior),
+# id, name, emoji, category, gender (any|men|women), age_group (any|kid|teen|adult|senior),
 # interests (tags), price_usd
 PRODUCTS = [
-    {"id": "p01", "name": "Wireless Noise-Cancelling Headphones", "category": "Electronics",
+    {"id": "p01", "name": "Wireless Noise-Cancelling Headphones", "emoji": "🎧", "category": "Electronics",
      "gender": "any", "age_group": "adult", "interests": ["music", "tech", "travel"], "price_usd": 199},
-    {"id": "p02", "name": "Running Shoes (Lightweight)", "category": "Footwear",
+    {"id": "p02", "name": "Running Shoes (Lightweight)", "emoji": "👟", "category": "Footwear",
      "gender": "any", "age_group": "adult", "interests": ["fitness", "running", "sports"], "price_usd": 89},
-    {"id": "p03", "name": "Yoga Mat (Eco Cork)", "category": "Fitness",
+    {"id": "p03", "name": "Yoga Mat (Eco Cork)", "emoji": "🧘", "category": "Fitness",
      "gender": "any", "age_group": "adult", "interests": ["fitness", "yoga", "wellness"], "price_usd": 39},
-    {"id": "p04", "name": "Building Blocks Set (200 pcs)", "category": "Toys",
+    {"id": "p04", "name": "Building Blocks Set (200 pcs)", "emoji": "🧱", "category": "Toys",
      "gender": "any", "age_group": "kid", "interests": ["toys", "learning", "creativity"], "price_usd": 29},
-    {"id": "p05", "name": "Graphic Novel Box Set", "category": "Books",
+    {"id": "p05", "name": "Graphic Novel Box Set", "emoji": "📚", "category": "Books",
      "gender": "any", "age_group": "teen", "interests": ["reading", "comics", "art"], "price_usd": 45},
-    {"id": "p06", "name": "Skincare Gift Set", "category": "Beauty",
+    {"id": "p06", "name": "Skincare Gift Set", "emoji": "🧴", "category": "Beauty",
      "gender": "women", "age_group": "adult", "interests": ["beauty", "self-care", "wellness"], "price_usd": 55},
-    {"id": "p07", "name": "Leather Wallet (RFID)", "category": "Accessories",
+    {"id": "p07", "name": "Leather Wallet (RFID)", "emoji": "👛", "category": "Accessories",
      "gender": "men", "age_group": "adult", "interests": ["fashion", "travel"], "price_usd": 49},
-    {"id": "p08", "name": "Smartwatch (Fitness+)", "category": "Electronics",
+    {"id": "p08", "name": "Smartwatch (Fitness+)", "emoji": "⌚", "category": "Electronics",
      "gender": "any", "age_group": "adult", "interests": ["fitness", "tech", "health"], "price_usd": 149},
-    {"id": "p09", "name": "Cast-Iron Cookware Set", "category": "Home & Kitchen",
+    {"id": "p09", "name": "Cast-Iron Cookware Set", "emoji": "🍳", "category": "Home & Kitchen",
      "gender": "any", "age_group": "adult", "interests": ["cooking", "home", "food"], "price_usd": 120},
-    {"id": "p10", "name": "Acoustic Guitar (Beginner)", "category": "Music",
+    {"id": "p10", "name": "Acoustic Guitar (Beginner)", "emoji": "🎸", "category": "Music",
      "gender": "any", "age_group": "teen", "interests": ["music", "hobby", "art"], "price_usd": 110},
-    {"id": "p11", "name": "Ergonomic Reading Glasses", "category": "Accessories",
+    {"id": "p11", "name": "Ergonomic Reading Glasses", "emoji": "👓", "category": "Accessories",
      "gender": "any", "age_group": "senior", "interests": ["reading", "comfort", "health"], "price_usd": 35},
-    {"id": "p12", "name": "Board Game Night Bundle", "category": "Games",
+    {"id": "p12", "name": "Board Game Night Bundle", "emoji": "🎲", "category": "Games",
      "gender": "any", "age_group": "any", "interests": ["games", "family", "fun"], "price_usd": 59},
 ]
 
@@ -95,5 +95,5 @@ def recommend_markdown(prefs: dict | None, limit: int = 6) -> str:
         price = format_price(p["price_usd"], prefs)
         star = " ⭐" if p["matched_interests"] else ""
         why = f"  — _matches your interest in {', '.join(p['matched_interests'])}_" if p["matched_interests"] else ""
-        lines.append(f"{i}. **{p['name']}** ({p['category']}) — {price}{star}{why}")
+        lines.append(f"{i}. {p.get('emoji', '🛍️')} **{p['name']}** ({p['category']}) — {price}{star}{why}")
     return "\n".join(lines)

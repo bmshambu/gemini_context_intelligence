@@ -25,11 +25,28 @@ STEP_NAME = {
 }
 
 
+def _ts(r: dict) -> float:
+    ut = r.get("_update_time")
+    if ut is not None:
+        try:
+            return ut.timestamp()
+        except Exception:  # noqa: BLE001
+            return 0.0
+    return float(r.get("_created", 0) or 0)
+
+
 def get_order(user_id) -> dict | None:
-    for r in store.recall(user_id, store.TIER_TASK):
-        if r.get("key") == _ORDER_KEY:
-            return r
-    return None
+    """The shopper's current order — the MOST-RECENTLY-WRITTEN 'order' record.
+
+    On Memory Bank, rapid keep-latest writes can briefly leave more than one
+    'order' record (eventual-consistent deletes); returning the newest reflects
+    the true latest state and prevents a stale early step from resurfacing.
+    """
+    cands = [r for r in store.recall(user_id, store.TIER_TASK) if r.get("key") == _ORDER_KEY]
+    if not cands:
+        return None
+    cands.sort(key=_ts, reverse=True)
+    return cands[0]
 
 
 def _save(user_id, rec) -> dict:
@@ -61,10 +78,18 @@ def set_payment(user_id, method) -> dict:
 
 
 def confirm(user_id) -> dict:
-    rec = start_or_get(user_id)
+    """Finalize the order and CLEAR it from temporary memory.
+
+    A completed order must not linger as resumable — so after building the
+    confirmation we delete the order record. This also wipes any stale/duplicate
+    'order' rows, so the next session starts a fresh purchase (no false resume).
+    Returns the confirmed summary for the reply (memory itself is now empty).
+    """
+    rec = dict(get_order(user_id) or {})
     rec.update({"step": 5, "status": "confirmed",
                 "order_id": f"ORD-{int(time.time()) % 1000000:06d}"})
-    return _save(user_id, rec)
+    clear_order(user_id)
+    return rec
 
 
 def clear_order(user_id) -> None:

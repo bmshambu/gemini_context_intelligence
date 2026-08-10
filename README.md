@@ -39,14 +39,14 @@ and framing will read a little differently each run while the data stays identic
 > 💾 **Permanent memory written** — profile saved: country **India** → currency **INR ₹**, gender male, age 30 (adult), interests fitness + tech.
 
 **🤖 Companion:**
-> ### Step 1 of 5 — What would you like to buy?
+> ### 🛍️ Step 1 of 5 — What would you like to buy?
 > Prices in **INR**. Picks based on your profile (⭐ = matches your interests):
-> 1. **Smartwatch (Fitness+)** — ₹12,367 ⭐ _fitness, tech_
-> 2. **Yoga Mat (Eco Cork)** — ₹3,237 ⭐ _fitness_
-> 3. **Running Shoes (Lightweight)** — ₹7,387 ⭐ _fitness_
-> 4. **Wireless Noise-Cancelling Headphones** — ₹16,517 ⭐ _tech_
-> 5. **Board Game Night Bundle** — ₹4,897
-> 6. **Cast-Iron Cookware Set** — ₹9,960
+> 1. ⌚ **Smartwatch (Fitness+)** — ₹12,367 ⭐ _fitness, tech_
+> 2. 🧘 **Yoga Mat (Eco Cork)** — ₹3,237 ⭐ _fitness_
+> 3. 👟 **Running Shoes (Lightweight)** — ₹7,387 ⭐ _fitness_
+> 4. 🎧 **Wireless Noise-Cancelling Headphones** — ₹16,517 ⭐ _tech_
+> 5. 🎲 **Board Game Night Bundle** — ₹4,897
+> 6. 🍳 **Cast-Iron Cookware Set** — ₹9,960
 
 **🧑 Shopper:** number 1
 
@@ -76,10 +76,10 @@ and framing will read a little differently each run while the data stays identic
 **🧑 Shopper:** continue → card
 
 **🤖 Companion:**
-> **Order summary**
-> - Smartwatch (Fitness+) — ₹12,367
-> - Ship to: 42 MG Road, Bengaluru 560001
-> - Payment: Card
+> 🧾 **Order summary**
+> - 📦 Smartwatch (Fitness+) — ₹12,367
+> - 🏠 Ship to: 42 MG Road, Bengaluru 560001
+> - 💳 Payment: Card
 >
 > Type **confirm** to place the order.
 
@@ -98,26 +98,26 @@ Returning shopper (profile: **India**, INR, interests fitness + tech). The opene
 > 💾 **Permanent memory updated** — currency → **USD $** only. Country stays **India**; gender/age/interests untouched.
 
 **🤖 Companion:**
-> Sure — prices now in **USD**:
-> 1. **Smartwatch (Fitness+)** — $149 ⭐ _fitness, tech_
-> 2. **Yoga Mat (Eco Cork)** — $39 ⭐ _fitness_
-> 3. **Running Shoes (Lightweight)** — $89 ⭐ _fitness_
-> 4. **Wireless Noise-Cancelling Headphones** — $199 ⭐ _tech_
-> 5. **Board Game Night Bundle** — $59
-> 6. **Cast-Iron Cookware Set** — $120
+> Sure — prices now in **USD** 💵:
+> 1. ⌚ **Smartwatch (Fitness+)** — $149 ⭐ _fitness, tech_
+> 2. 🧘 **Yoga Mat (Eco Cork)** — $39 ⭐ _fitness_
+> 3. 👟 **Running Shoes (Lightweight)** — $89 ⭐ _fitness_
+> 4. 🎧 **Wireless Noise-Cancelling Headphones** — $199 ⭐ _tech_
+> 5. 🎲 **Board Game Night Bundle** — $59
+> 6. 🍳 **Cast-Iron Cookware Set** — $120
 
 **🧑 Shopper:** I'm more into cooking now than fitness
 
 > 💾 **Permanent memory updated** — interests → **cooking, tech**. Recommendations re-rank.
 
 **🤖 Companion:**
-> Updated your picks:
-> 1. **Cast-Iron Cookware Set** — $120 ⭐ _cooking_
-> 2. **Smartwatch (Fitness+)** — $149 ⭐ _tech_
-> 3. **Wireless Noise-Cancelling Headphones** — $199 ⭐ _tech_
-> 4. **Yoga Mat (Eco Cork)** — $39
-> 5. **Board Game Night Bundle** — $59
-> 6. **Running Shoes (Lightweight)** — $89
+> Updated your picks ✨:
+> 1. 🍳 **Cast-Iron Cookware Set** — $120 ⭐ _cooking_
+> 2. ⌚ **Smartwatch (Fitness+)** — $149 ⭐ _tech_
+> 3. 🎧 **Wireless Noise-Cancelling Headphones** — $199 ⭐ _tech_
+> 4. 🧘 **Yoga Mat (Eco Cork)** — $39
+> 5. 🎲 **Board Game Night Bundle** — $59
+> 6. 👟 **Running Shoes (Lightweight)** — $89
 
 **🧑 Shopper:** I'm relocating — change my country to the UK
 
@@ -125,12 +125,12 @@ Returning shopper (profile: **India**, INR, interests fitness + tech). The opene
 
 **🤖 Companion:**
 > Welcome to the UK 🇬🇧 — prices now in **GBP**:
-> 1. **Cast-Iron Cookware Set** — £95 ⭐ _cooking_
-> 2. **Smartwatch (Fitness+)** — £118 ⭐ _tech_
-> 3. **Wireless Noise-Cancelling Headphones** — £157 ⭐ _tech_
-> 4. **Yoga Mat (Eco Cork)** — £31
-> 5. **Board Game Night Bundle** — £47
-> 6. **Running Shoes (Lightweight)** — £70
+> 1. 🍳 **Cast-Iron Cookware Set** — £95 ⭐ _cooking_
+> 2. ⌚ **Smartwatch (Fitness+)** — £118 ⭐ _tech_
+> 3. 🎧 **Wireless Noise-Cancelling Headphones** — £157 ⭐ _tech_
+> 4. 🧘 **Yoga Mat (Eco Cork)** — £31
+> 5. 🎲 **Board Game Night Bundle** — £47
+> 6. 👟 **Running Shoes (Lightweight)** — £70
 
 **🧑 Shopper:** the cookware set → 10 Downing St, London → card → confirm
 
@@ -189,6 +189,17 @@ onboarding — a presenter utility for demoing from scratch, not a product featu
 
 Do **not** set `GOOGLE_CLOUD_PROJECT`/`GOOGLE_CLOUD_LOCATION` as `AGENT_VAR_` — Agent
 Engine reserves and injects them (the deploy script drops reserved names defensively).
+
+### Starter prompts (turn-1 chips)
+
+`starter_prompt.json` lists the clickable suggestions shown **before** the shopper
+types (e.g. "Hi, let's start shopping"). Clicking one sends it as a normal message,
+so it flows through the agent's opener. These are **GE app config, not agent code** —
+apply them by filling `PROJECT_ID`/`ENGINE_ID` in `set_starter_prompts.sh` and running it:
+
+```bash
+PROJECT_ID=your-proj ENGINE_ID=your-ge-app-id bash set_starter_prompts.sh
+```
 
 ## Later
 

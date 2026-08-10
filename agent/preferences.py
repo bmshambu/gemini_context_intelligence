@@ -58,7 +58,7 @@ def age_group(age) -> str:
 
 
 def set_preferences(user_id, country=None, language=None, gender=None, age=None,
-                    interests=None, currency=None) -> dict:
+                    interests=None, currency=None, name=None) -> dict:
     """Upsert the permanent profile, MERGING over what's already saved.
 
     Every arg is optional so the shopper can update a single preference anytime
@@ -72,6 +72,8 @@ def set_preferences(user_id, country=None, language=None, gender=None, age=None,
     rec.pop("key", None)
     rec.pop("_update_time", None)
 
+    if name is not None and str(name).strip():
+        rec["name"] = str(name).strip()
     if country is not None and str(country).strip():
         rec["country"] = str(country).strip()
     if language is not None and str(language).strip():

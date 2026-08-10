@@ -50,6 +50,16 @@ def _uid(ctx) -> str | None:
     return None
 
 
+def _name_from_uid(uid: str | None) -> str:
+    """Best-effort first name from the GE identity (usually an email). Returns ''
+    when it isn't cleanly derivable (e.g. contains digits) so we don't greet with
+    something odd."""
+    if not uid:
+        return ""
+    parts = uid.split("@")[0].replace(".", " ").replace("_", " ").split()
+    return parts[0].capitalize() if parts and parts[0].isalpha() else ""
+
+
 # ── the deterministic facts, handed to the LLM to convey ─────────────────────
 def _prefs_summary(p: dict) -> str:
     return (f"country={p.get('country')}, currency={p.get('currency_code')} "
@@ -59,9 +69,9 @@ def _prefs_summary(p: dict) -> str:
 
 
 def _order_summary_data(order: dict) -> str:
-    return (f"- {order.get('product_name')} — {order.get('price_display')}\n"
-            f"- Ship to: {order.get('address')}\n"
-            f"- Payment: {order.get('payment_method')}")
+    return (f"- 📦 {order.get('product_name')} — {order.get('price_display')}\n"
+            f"- 🏠 Ship to: {order.get('address')}\n"
+            f"- 💳 Payment: {order.get('payment_method')}")
 
 
 def _shopping_context(uid, first_turn: bool) -> str:
@@ -76,12 +86,30 @@ def _shopping_context(uid, first_turn: bool) -> str:
     lang = (prefs or {}).get("language", "English")
 
     L: list[str] = []
+    email_name = _name_from_uid(uid)
+    nickname = (prefs or {}).get("name")
+    display_name = nickname or email_name
+    if display_name:
+        L.append(f"The shopper's preferred name is {display_name} — address them warmly by name "
+                 "(naturally, not every line).")
     if first_turn:
         L.append("This is the shopper's first message this session — open with a warm, fresh greeting.")
 
     if not preferences.is_complete(prefs):
-        L.append("ONBOARDING: no saved profile yet. In one message, invite them to share their "
-                 "country, preferred language, gender, age, and any interests; then call set_preferences.")
+        onboarding = ("ONBOARDING: no saved profile yet. In one message, invite them to share their "
+                      "country, preferred language, gender, age, and any interests; then call set_preferences.")
+        # Proactive name handling at onboarding (stored in permanent memory):
+        #  - no usable name from the email (e.g. it has digits) → ask what to call them
+        #  - name is long → offer a shorter nickname
+        if not nickname:
+            if not email_name:
+                onboarding += (" Also — I don't have a name for them yet, so warmly ask what they'd "
+                               "like to be called, and save it via set_preferences(name=...).")
+            elif len(email_name) > 5:
+                onboarding += (f" Also — the name from their email ('{email_name}') is a bit long, so "
+                               "warmly ask if they'd like you to use a shorter nickname, and save it via "
+                               "set_preferences(name=...).")
+        L.append(onboarding)
     else:
         L.append("Saved profile (never re-ask these): " + _prefs_summary(prefs) + ".")
         if active and order_mod.is_in_progress(active) and first_turn:
@@ -95,19 +123,20 @@ def _shopping_context(uid, first_turn: bool) -> str:
         else:
             step = active.get("step", 1) if active else 1
             if step <= 1:
-                L.append("STEP 1 — present these EXACT picks (keep every product name, price and ⭐ "
-                         "exactly as written; include all of them; invite a choice by number or name):\n"
+                L.append("STEP 1 — In THIS reply, present these EXACT picks now — actually show the "
+                         "list, do NOT say you'll fetch/find them. Keep every product name, price and "
+                         "⭐ exactly as written; include all of them; invite a choice by number or name:\n"
                          + catalogue.recommend_markdown(prefs))
             elif step == 2:
-                L.append("STEP 2 — ask for their shipping address, then call set_shipping_address.")
+                L.append("STEP 2 — ask for their shipping address; when they give it you MUST call "
+                         "set_shipping_address to save it before moving on.")
             elif step == 3:
-                L.append("STEP 3 — ask whether they'll pay by cash on delivery or card, then call set_payment_method.")
+                L.append("STEP 3 — ask cash on delivery or card; when they choose you MUST call "
+                         "set_payment_method to save it before moving on.")
             elif step == 4:
-                L.append("STEP 4 — present this order summary EXACTLY, then ask them to type 'confirm':\n"
+                L.append("STEP 4 — present this order summary EXACTLY, then ask them to type 'confirm'; "
+                         "when they confirm you MUST call confirm_order:\n"
                          + _order_summary_data(active))
-        if order and order.get("status") == "confirmed" and order.get("order_id"):
-            L.append(f"The last order is CONFIRMED (id {order.get('order_id')}) — if they just "
-                     "confirmed, congratulate them (demo only, no real payment was taken).")
 
     L.append(f"Convey all of the above in your OWN natural words, in {lang} — vary your phrasing "
              "so it never feels like a fixed template. But keep every product name, price, currency "
@@ -126,7 +155,7 @@ def _inject_context(callback_context: CallbackContext, llm_request: LlmRequest):
 # ── tools ────────────────────────────────────────────────────────────────────
 def set_preferences(country: str = "", language: str = "", gender: str = "",
                     age: str = "", interests: list[str] = None, currency: str = "",
-                    tool_context: ToolContext = None) -> dict:
+                    name: str = "", tool_context: ToolContext = None) -> dict:
     """Save or UPDATE the shopper's PERMANENT profile. Use at onboarding (all
     fields) AND anytime they change a single preference later — pass ONLY the
     field(s) that changed; the rest is kept.
@@ -138,11 +167,13 @@ def set_preferences(country: str = "", language: str = "", gender: str = "",
         interests: the FULL desired interests list when changing interests.
         currency: an explicit currency code (e.g. "USD", "INR") to show prices in,
             independent of country — use when they say "show prices in USD".
+        name: the shopper's preferred name / nickname to address them by — save it
+            when they give one (e.g. after you offer a shorter nickname at onboarding).
     """
     rec = preferences.set_preferences(
         _uid(tool_context),
         country=country or None, language=language or None, gender=gender or None,
-        age=age or None, interests=interests, currency=currency or None,
+        age=age or None, interests=interests, currency=currency or None, name=name or None,
     )
     return {"status": "saved", "currency": rec["currency_code"], "age_group": rec["age_group"]}
 
@@ -252,7 +283,8 @@ root_agent = LlmAgent(
     model="gemini-2.5-flash",
     instruction=(
         "You are a warm, personable e-commerce shopping companion in Gemini Enterprise. "
-        "Reply in clear markdown, in the shopper's preferred language.\n"
+        "Reply in clear markdown, in the shopper's preferred language, and address the shopper "
+        "by name when the [Context] provides one.\n"
         "\n"
         "Each turn a [Context] note gives you the shopper's saved profile, the exact "
         "recommendation/order data to convey, and what to do this step. Speak it in your "
@@ -261,9 +293,18 @@ root_agent = LlmAgent(
         "never re-ask something already in the profile.\n"
         "\n"
         "Run the flow with your tools: set_preferences (onboarding AND any later single-field "
-        "preference change — pass only what changed, use the currency arg for a currency "
-        "change; re-show recommendations after a change that affects them); select_product; "
-        "set_shipping_address; set_payment_method; confirm_order. Never mention tools."
+        "preference change — pass only what changed, use the currency arg for a currency change); "
+        "select_product; set_shipping_address; set_payment_method; confirm_order.\n"
+        "\n"
+        "Important behaviours: (a) after ANY preference change that affects recommendations, "
+        "IMMEDIATELY show the updated picks from [Context] in the SAME reply — never say you'll "
+        "'go find' them, just list them. (b) At each checkout step, actually CALL the matching "
+        "tool to save the answer before moving on. (c) When confirm_order returns, congratulate "
+        "the shopper and show the returned order id. Never mention tools.\n"
+        "\n"
+        "Style: keep it lively with a few tasteful, relevant emojis (e.g. 🛍️ 🛒 ✨ ✅ 💳 📦 🎉) — "
+        "sprinkle, don't spam; one or two per message is plenty, and keep the product emojis "
+        "already in the picks list."
     ),
     tools=[set_preferences, recommend_products, select_product,
            set_shipping_address, set_payment_method, confirm_order],

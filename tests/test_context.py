@@ -77,7 +77,17 @@ def test_order_steps_advance_and_resume_detects_in_progress():
     assert order_mod.get_order(u)["step"] == 4
     rec = order_mod.confirm(u)
     assert rec["step"] == 5 and rec["status"] == "confirmed" and rec["order_id"]
-    assert not order_mod.is_in_progress(order_mod.get_order(u))  # confirmed != resumable
+
+
+def test_confirmed_order_is_cleared_so_it_never_resumes():
+    # Bug 1: a completed order must not show as "step 2/5" next time.
+    u = "done@x.com"
+    order_mod.set_product(u, "p02", "Running Shoes", "$89")
+    order_mod.set_address(u, "1 Main St")
+    order_mod.set_payment(u, "card")
+    order_mod.confirm(u)
+    assert order_mod.get_order(u) is None                     # temp memory wiped
+    assert not order_mod.is_in_progress(order_mod.get_order(u))  # nothing to resume
 
 
 def test_order_expires_after_3_days():
@@ -111,6 +121,38 @@ def test_shopping_context_carries_right_data_per_state():
     preferences.set_preferences("h@x.com", country="India", language="Hindi",
                                 gender="female", age="25")
     assert "in Hindi" in agent._shopping_context("h@x.com", first_turn=True)
+
+
+def test_name_derived_from_email_and_injected():
+    assert agent._name_from_uid("rahul.sharma@acme.com") == "Rahul"
+    assert agent._name_from_uid("bmshambu134@gmail.com") == ""  # digits → no odd greeting
+    preferences.set_preferences("rahul.sharma@acme.com", country="India", gender="male", age="30")
+    ctx = agent._shopping_context("rahul.sharma@acme.com", first_turn=True)
+    assert "preferred name is Rahul" in ctx
+
+
+def test_long_email_name_triggers_nickname_prompt_at_onboarding():
+    long_uid = "shambulingaiahbm@kpmg.com"          # email name > 5 chars, no profile yet
+    ctx = agent._shopping_context(long_uid, first_turn=True)
+    assert "ONBOARDING" in ctx and "nickname" in ctx.lower()
+
+    short_uid = "sam@x.com"                          # 'Sam' <= 5 chars → no nickname prompt
+    ctx = agent._shopping_context(short_uid, first_turn=True)
+    assert "nickname" not in ctx.lower()
+
+    # email name not derivable (digits) → ask what to call them
+    digits_uid = "bmshambu134@gmail.com"
+    ctx = agent._shopping_context(digits_uid, first_turn=True)
+    assert "like to be called" in ctx.lower()
+
+
+def test_saved_nickname_overrides_email_name_and_stops_prompt():
+    uid = "shambulingaiahbm@kpmg.com"
+    preferences.set_preferences(uid, country="India", gender="male", age="30", name="Shammi")
+    assert preferences.get_preferences(uid)["name"] == "Shammi"
+    ctx = agent._shopping_context(uid, first_turn=True)
+    assert "preferred name is Shammi" in ctx        # nickname used
+    assert "nickname" not in ctx.lower()             # no longer asked (profile complete + saved)
 
 
 # ── tools + demo reset ───────────────────────────────────────────────────────
