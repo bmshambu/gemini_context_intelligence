@@ -38,6 +38,11 @@ step 5  Done (order id)                   (each step writes the TASK order recor
 Leave at **step 2 or 3** and return → the opener hints to resume; reply *continue*
 or *start over*.
 
+**Repeat orders reuse conveniences.** The last-used shipping address and payment
+method are remembered in permanent memory, so on later orders the agent *offers*
+them ("ship to your usual address? pay by card as before?") instead of asking blank
+— always overridable.
+
 ## How it's driven — deterministic data, LLM delivery
 
 The **data** is deterministic; the **delivery** is the LLM. Each turn a `[Context]`

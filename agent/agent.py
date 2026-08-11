@@ -128,11 +128,22 @@ def _shopping_context(uid, first_turn: bool) -> str:
                          "⭐ exactly as written; include all of them; invite a choice by number or name:\n"
                          + catalogue.recommend_markdown(prefs))
             elif step == 2:
-                L.append("STEP 2 — ask for their shipping address; when they give it you MUST call "
-                         "set_shipping_address to save it before moving on.")
+                du = prefs.get("default_address")
+                if du:
+                    L.append(f"STEP 2 — they usually ship to '{du}'. PROACTIVELY offer to send it "
+                             "there again (they can just confirm), or take a new address. Either way "
+                             "call set_shipping_address before moving on.")
+                else:
+                    L.append("STEP 2 — ask for their shipping address; when they give it you MUST call "
+                             "set_shipping_address to save it before moving on.")
             elif step == 3:
-                L.append("STEP 3 — ask cash on delivery or card; when they choose you MUST call "
-                         "set_payment_method to save it before moving on.")
+                dp = prefs.get("default_payment")
+                if dp:
+                    L.append(f"STEP 3 — they usually pay by {dp}. PROACTIVELY offer that as the "
+                             "default (they can confirm or switch); then call set_payment_method.")
+                else:
+                    L.append("STEP 3 — ask cash on delivery or card; when they choose you MUST call "
+                             "set_payment_method to save it before moving on.")
             elif step == 4:
                 L.append("STEP 4 — present this order summary EXACTLY, then ask them to type 'confirm'; "
                          "when they confirm you MUST call confirm_order:\n"
@@ -199,19 +210,24 @@ def select_product(product: str, tool_context: ToolContext = None) -> dict:
 
 
 def set_shipping_address(address: str, tool_context: ToolContext = None) -> dict:
-    """Step 2 → 3: record the shipping address and advance to payment."""
+    """Step 2 → 3: record the shipping address and advance to payment. Also
+    remembers it as the shopper's usual address for future orders."""
     if not (address or "").strip():
         return {"status": "skipped", "reason": "empty address"}
-    order_mod.set_address(_uid(tool_context), address.strip())
+    uid = _uid(tool_context)
+    order_mod.set_address(uid, address.strip())
+    preferences.save_defaults(uid, address=address.strip())  # remember for next time
     return {"status": "saved", "next": "payment method"}
 
 
 def set_payment_method(method: str, tool_context: ToolContext = None) -> dict:
     """Step 3 → 4: record payment method ('cash on delivery' or 'card') and advance
-    to the order summary."""
+    to the order summary. Also remembers it as the shopper's usual payment method."""
     m = (method or "").strip().lower()
     norm = "cash on delivery" if ("cash" in m or "cod" in m or "delivery" in m) else "card"
-    order_mod.set_payment(_uid(tool_context), norm)
+    uid = _uid(tool_context)
+    order_mod.set_payment(uid, norm)
+    preferences.save_defaults(uid, payment=norm)  # remember for next time
     return {"status": "saved", "payment_method": norm, "next": "confirm"}
 
 

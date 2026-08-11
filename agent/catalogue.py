@@ -33,6 +33,19 @@ PRODUCTS = [
      "gender": "any", "age_group": "senior", "interests": ["reading", "comfort", "health"], "price_usd": 35},
     {"id": "p12", "name": "Board Game Night Bundle", "emoji": "🎲", "category": "Games",
      "gender": "any", "age_group": "any", "interests": ["games", "family", "fun"], "price_usd": 59},
+    # ── Entertainment ────────────────────────────────────────────────────────
+    {"id": "p13", "name": "4K Streaming Media Player", "emoji": "🎬", "category": "Entertainment",
+     "gender": "any", "age_group": "adult", "interests": ["entertainment", "movies", "tech", "streaming"], "price_usd": 49},
+    {"id": "p14", "name": "Bluetooth Party Speaker", "emoji": "🔊", "category": "Entertainment",
+     "gender": "any", "age_group": "teen", "interests": ["entertainment", "music", "party"], "price_usd": 79},
+    {"id": "p15", "name": "Handheld Gaming Console", "emoji": "🎮", "category": "Entertainment",
+     "gender": "any", "age_group": "teen", "interests": ["entertainment", "gaming", "tech"], "price_usd": 199},
+    {"id": "p16", "name": "Portable Movie Projector", "emoji": "📽️", "category": "Entertainment",
+     "gender": "any", "age_group": "adult", "interests": ["entertainment", "movies", "home"], "price_usd": 130},
+    {"id": "p17", "name": "VR Headset (Immersive)", "emoji": "🥽", "category": "Entertainment",
+     "gender": "any", "age_group": "teen", "interests": ["entertainment", "gaming", "tech", "vr"], "price_usd": 299},
+    {"id": "p18", "name": "Karaoke Microphone Set", "emoji": "🎤", "category": "Entertainment",
+     "gender": "any", "age_group": "any", "interests": ["entertainment", "music", "party", "fun"], "price_usd": 45},
 ]
 
 

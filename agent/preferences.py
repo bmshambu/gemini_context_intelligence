@@ -58,7 +58,8 @@ def age_group(age) -> str:
 
 
 def set_preferences(user_id, country=None, language=None, gender=None, age=None,
-                    interests=None, currency=None, name=None) -> dict:
+                    interests=None, currency=None, name=None,
+                    default_address=None, default_payment=None) -> dict:
     """Upsert the permanent profile, MERGING over what's already saved.
 
     Every arg is optional so the shopper can update a single preference anytime
@@ -84,6 +85,11 @@ def set_preferences(user_id, country=None, language=None, gender=None, age=None,
         rec["age"] = age
     if interests is not None:  # replace the full list when provided
         rec["interests"] = [i.strip() for i in interests if i and i.strip()]
+    # Remembered checkout conveniences (offered on later orders, always overridable)
+    if default_address is not None and str(default_address).strip():
+        rec["default_address"] = str(default_address).strip()
+    if default_payment is not None and str(default_payment).strip():
+        rec["default_payment"] = str(default_payment).strip()
 
     # currency: explicit override > country-derived (only if country given) > keep
     override = currency_by_code(currency) if currency else None
@@ -108,6 +114,12 @@ def get_preferences(user_id) -> dict | None:
         if r.get("key") == _PROFILE_KEY:
             return r
     return None
+
+
+def save_defaults(user_id, address=None, payment=None) -> None:
+    """Remember the last-used shipping address / payment method so later orders can
+    offer to reuse them (permanent memory; always overridable)."""
+    set_preferences(user_id, default_address=address, default_payment=payment)
 
 
 def is_complete(prefs: dict | None) -> bool:

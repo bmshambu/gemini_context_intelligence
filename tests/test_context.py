@@ -174,6 +174,26 @@ def test_tools_run_full_flow():
     assert out["status"] == "confirmed" and out["order_id"]
 
 
+def test_address_and_payment_remembered_and_suggested_next_order():
+    tc = _TC("ret@x.com")
+    agent.set_preferences(country="India", gender="male", age="30", tool_context=tc)
+    agent.select_product("Smartwatch (Fitness+)", tool_context=tc)          # step 2
+    agent.set_shipping_address("42 MG Road, Bengaluru", tool_context=tc)    # saves default
+    agent.set_payment_method("card", tool_context=tc)                       # saves default
+    agent.confirm_order(tool_context=tc)                                    # clears order
+
+    p = preferences.get_preferences("ret@x.com")
+    assert p["default_address"] == "42 MG Road, Bengaluru" and p["default_payment"] == "card"
+
+    # next order: steps 2 & 3 proactively suggest the usual address + payment
+    agent.select_product("Yoga Mat (Eco Cork)", tool_context=tc)            # new order, step 2
+    ctx2 = agent._shopping_context("ret@x.com", first_turn=False)
+    assert "usually ship to" in ctx2 and "42 MG Road" in ctx2
+    agent.set_shipping_address("42 MG Road, Bengaluru", tool_context=tc)    # step 3
+    ctx3 = agent._shopping_context("ret@x.com", first_turn=False)
+    assert "usually pay by card" in ctx3
+
+
 def test_clear_memory_wipes_both_tiers():
     u = "clr@x.com"
     preferences.set_preferences(u, country="USA", gender="male", age="40")
