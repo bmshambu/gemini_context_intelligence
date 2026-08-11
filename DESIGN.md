@@ -43,6 +43,11 @@ method are remembered in permanent memory, so on later orders the agent *offers*
 them ("ship to your usual address? pay by card as before?") instead of asking blank
 — always overridable.
 
+**Shopping for someone else.** A shopper (say, male) can say "I'm looking for my
+kid / my wife" → `browse_for` filters the catalogue by *that person's* gender/age
+for this browse (transient, in session state — not the permanent profile);
+"for myself" switches back, and confirming an order resets to self.
+
 ## How it's driven — deterministic data, LLM delivery
 
 The **data** is deterministic; the **delivery** is the LLM. Each turn a `[Context]`

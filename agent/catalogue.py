@@ -49,28 +49,43 @@ PRODUCTS = [
 ]
 
 
+# Profiles say male/female; the catalogue tags products men/women. Normalize so
+# they match (else a male shopper never sees men's items, etc.).
+_GENDER_ALIASES = {"male": "men", "man": "men", "men": "men",
+                   "female": "women", "woman": "women", "women": "women"}
+
+
+def _norm_gender(g: str) -> str:
+    return _GENDER_ALIASES.get((g or "").strip().lower(), "")
+
+
 def _matches(product: dict, gender: str, age_group: str) -> bool:
-    g_ok = product["gender"] in ("any", (gender or "").lower())
-    a_ok = product["age_group"] in ("any", (age_group or "any"))
+    g = _norm_gender(gender)      # "" when unknown / "any" → no gender restriction
+    a = age_group or ""
+    g_ok = g == "" or product["gender"] in ("any", g)
+    a_ok = a in ("", "any") or product["age_group"] in ("any", a)
     return g_ok and a_ok
 
 
-def recommend(prefs: dict | None, limit: int = 6) -> list[dict]:
+def recommend(prefs: dict | None, limit: int = 6, *,
+              gender: str | None = None, age_group: str | None = None,
+              interests: list[str] | None = None) -> list[dict]:
     """Products filtered by gender/age group, scored by interest overlap.
 
-    Returns product dicts annotated with `matched_interests` (list) so the caller
-    can highlight the "picked for you" reason.
+    By default filters by the shopper's own profile. Pass gender/age_group/interests
+    to shop for SOMEONE ELSE (e.g. their kid or wife) — those override the profile
+    for this call only. Returns product dicts annotated with `matched_interests`.
     """
     prefs = prefs or {}
-    gender = prefs.get("gender", "")
-    age_group = prefs.get("age_group", "any")
-    interests = {i.lower() for i in prefs.get("interests", [])}
+    g = gender if gender is not None else prefs.get("gender", "")
+    ag = age_group if age_group is not None else prefs.get("age_group", "any")
+    ints = {i.lower() for i in (interests if interests is not None else prefs.get("interests", []))}
 
     scored = []
     for p in PRODUCTS:
-        if not _matches(p, gender, age_group):
+        if not _matches(p, g, ag):
             continue
-        overlap = sorted(interests & {t.lower() for t in p["interests"]})
+        overlap = sorted(ints & {t.lower() for t in p["interests"]})
         scored.append((len(overlap), p, overlap))
     # highest interest overlap first, then cheaper first as a tiebreak
     scored.sort(key=lambda t: (-t[0], t[1]["price_usd"]))
@@ -97,16 +112,23 @@ def format_price(price_usd: float, prefs: dict | None) -> str:
     return f"{symbol}{amount:,}"
 
 
-def recommend_markdown(prefs: dict | None, limit: int = 6) -> str:
-    """A ready-to-show markdown list of recommendations with real prices and
-    a ⭐ highlight on interest matches."""
-    picks = recommend(prefs, limit)
+def recommend_markdown(prefs: dict | None, limit: int = 6, *,
+                       gender: str | None = None, age_group: str | None = None,
+                       interests: list[str] | None = None, for_label: str | None = None) -> str:
+    """A ready-to-show markdown list of recommendations with real prices and a ⭐
+    highlight on interest matches. Prices always use the shopper's currency.
+
+    Pass gender/age_group/interests + for_label to show picks for someone else
+    (a gift recipient); a header names who they're for."""
+    picks = recommend(prefs, limit, gender=gender, age_group=age_group, interests=interests)
     if not picks:
-        return "_No products match your profile yet._"
+        who = f" for {for_label}" if for_label else " for your profile"
+        return f"_No products match{who} yet._"
+    header = f"Picks for **{for_label}**:\n" if for_label else ""
     lines = []
     for i, p in enumerate(picks, 1):
         price = format_price(p["price_usd"], prefs)
         star = " ⭐" if p["matched_interests"] else ""
-        why = f"  — _matches your interest in {', '.join(p['matched_interests'])}_" if p["matched_interests"] else ""
+        why = f"  — _matches interest in {', '.join(p['matched_interests'])}_" if p["matched_interests"] else ""
         lines.append(f"{i}. {p.get('emoji', '🛍️')} **{p['name']}** ({p['category']}) — {price}{star}{why}")
-    return "\n".join(lines)
+    return header + "\n".join(lines)

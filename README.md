@@ -15,6 +15,43 @@ Step 5  Done — order id                                        (in-progress = 
 
 Leave at step 2/3 and come back → the opener hints to **resume where you left off**.
 
+## Memory Management — what the demo covers
+
+The whole demo is a study in **what to remember, for how long, and where**. Three
+scopes: **Permanent** (who you are — never expires), **Temporary** (what you're
+doing now — 3-day TTL), and **Transient** (this session only). Deterministic data
+(catalogue/prices) isn't memory but is listed for the full picture.
+
+| Capability | Scope | Lifespan | Shown in |
+|---|---|---|---|
+| Profile: country → **currency**, language, gender, age | 🟢 Permanent | Never expires | Conv 1 |
+| **Preferred name / nickname** (asked at onboarding if email name is long/undecodable) | 🟢 Permanent | Never | Conv 1 |
+| **Interests** (add / change anytime — partial update, rest kept) | 🟢 Permanent | Never | Conv 2 |
+| **Currency override** (see prices in USD even though country = India) | 🟢 Permanent | Never | Conv 2 |
+| **Country change** → recomputes currency | 🟢 Permanent | Never | Conv 2 |
+| **Usual shipping address** (offered on repeat orders, overridable) | 🟢 Permanent | Never | repeat order |
+| **Usual payment method** (offered on repeat orders, overridable) | 🟢 Permanent | Never | repeat order |
+| **In-progress order** (5 steps: product → address → payment → confirm → done) | 🟡 Temporary | 3-day TTL | Conv 1 |
+| **Resume where you left off** (return mid-checkout) | 🟡 Temporary | 3-day TTL; cleared on confirm | Conv 1 |
+| **Shopping for someone else** (kid / wife → their gender, age, interests) | 🔵 Transient | This session; cleared on confirm or "for myself" | Conv 3 |
+| **Recommendations** (filter by demographics, rank by interests ⭐, currency prices, emojis) | ⚪ Deterministic | — (from catalogue) | Conv 1–3 |
+| **"clear memory"** demo reset (wipes both tiers, re-onboards) | ⚪ Utility | — | between runs |
+
+### The three scopes at a glance
+
+|  | 🟢 Permanent | 🟡 Temporary | 🔵 Transient |
+|---|---|---|---|
+| **Stores** | who you are | your open order | who you're shopping *for* now |
+| **Where** | Memory Bank | Memory Bank | ADK session state |
+| **Keyed by** | user_id | user_id | the live conversation |
+| **Cross-session?** | ✅ forever | ✅ for 3 days | ❌ this chat only |
+| **Written to Memory Bank?** | yes | yes (with TTL) | no |
+| **Example** | country, currency, interests, nickname | product + address + payment mid-checkout | "shopping for my kid" |
+
+**One-line thesis for the demo:** the agent separates *who you are* (permanent) from
+*what you're doing right now* (temporary) and *who you're shopping for this moment*
+(transient) — and never lets one overwrite another.
+
 ## Demo script (stakeholder walkthrough)
 
 Two conversations to run live. **Deterministic data, LLM delivery:** the numbers
@@ -137,6 +174,53 @@ Returning shopper (profile: **India**, INR, interests fitness + tech). The opene
 **🤖 Companion:** 🎉 Order placed! **Cast-Iron Cookware Set** (£95), order id **ORD-591027**.
 
 > **Takeaway:** every mid-flow change edited **one field** of permanent memory and kept everything else — currency, interests, and country each re-priced/re-ranked live, and the checkout continued uninterrupted.
+
+### Conversation 3 — shopping for someone else (gift buying)
+
+Shows that the agent separates **who's shopping** (permanent profile) from **who
+the item is for** (a transient "shopping for" context) — and that it filters and
+ranks by the *recipient*, never the shopper.
+
+Setup: the shopper is **Rahul** (male, 40, interests fitness + tech, India → ₹).
+His own picks lead with fitness/tech gear (⌚ Smartwatch, 🧘 Yoga Mat…) — ⭐ = his interests.
+
+**🧑 Shopper:** I'm looking for something for my kid
+
+**🤖 Companion:** Of course! How old is your kid, and is it for a boy or a girl? 🎁
+
+**🧑 Shopper:** he's 8
+
+> 🔀 **`browse_for(recipient="my kid", gender="male", age="8")`** — filters by the
+> **kid's** age (8 → kid), not Rahul's. His fitness interest is *not* applied.
+
+**🤖 Companion:**
+> Picks for **my kid** 🧒:
+> 1. 🧱 **Building Blocks Set (200 pcs)** — ₹2,407
+> 2. 🎤 **Karaoke Microphone Set** — ₹3,735
+> 3. 🎲 **Board Game Night Bundle** — ₹4,897
+
+**🧑 Shopper:** actually he's really into gaming
+
+> 🔀 **`browse_for(... interests=["gaming"])`** — now ranks by the **kid's** interest.
+
+**🤖 Companion:**
+> Great — here's what a young gamer would love 🎮:
+> 1. 🎮 **Handheld Gaming Console** — ₹16,517 ⭐ _gaming_
+> 2. 🥽 **VR Headset (Immersive)** — ₹24,817 ⭐ _gaming_
+> 3. 📚 **Graphic Novel Box Set** — ₹3,735
+> 4. 🎤 **Karaoke Microphone Set** — ₹3,735
+
+**🧑 Shopper:** show me things for me again
+
+> 🔀 **`browse_for(recipient="myself")`** — clears the recipient; back to Rahul's own fitness/tech picks. (Confirming an order also resets to self.)
+
+**Two points to make in the demo:**
+- **Filter vs rank:** the recipient's **gender/age filters** the catalogue; the
+  recipient's **interests rank** it (⭐). The shopper's own interests are never
+  applied to a gift list — a dad's "fitness" shouldn't sort his kid's toys.
+- **Nothing is overwritten:** "shopping for my kid" is transient (session only) —
+  Rahul's permanent profile (male, 40, fitness/tech, ₹) is untouched throughout.
+  This is the permanent-vs-temporary split in action.
 
 **Demo reset:** type **"clear memory"** between runs to wipe both tiers and start from onboarding.
 

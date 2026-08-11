@@ -74,11 +74,14 @@ def _order_summary_data(order: dict) -> str:
             f"- 💳 Payment: {order.get('payment_method')}")
 
 
-def _shopping_context(uid, first_turn: bool) -> str:
+def _shopping_context(uid, first_turn: bool, shopping_for: dict | None = None) -> str:
     """Build the per-turn [Context] note: the exact data + what to do this turn.
 
     The LLM turns this into a fresh, natural, localized message. It must keep the
     data verbatim — that's what keeps prices/products/facts correct.
+
+    `shopping_for` (transient, from session state) means the shopper is buying for
+    someone else — recommendations are filtered by that person's gender/age instead.
     """
     prefs = preferences.get_preferences(uid)
     order = order_mod.get_order(uid)
@@ -123,10 +126,22 @@ def _shopping_context(uid, first_turn: bool) -> str:
         else:
             step = active.get("step", 1) if active else 1
             if step <= 1:
-                L.append("STEP 1 — In THIS reply, present these EXACT picks now — actually show the "
-                         "list, do NOT say you'll fetch/find them. Keep every product name, price and "
-                         "⭐ exactly as written; include all of them; invite a choice by number or name:\n"
-                         + catalogue.recommend_markdown(prefs))
+                if shopping_for:
+                    label = shopping_for.get("label", "them")
+                    recs = catalogue.recommend_markdown(
+                        prefs, gender=shopping_for.get("gender", ""),
+                        age_group=shopping_for.get("age_group", "any"),
+                        interests=shopping_for.get("interests", []), for_label=label)
+                    L.append(f"STEP 1 — the shopper is buying for {label} (NOT themselves), so these "
+                             f"picks are filtered for {label}. Present them EXACTLY now (don't say "
+                             "you'll fetch them); invite a choice by number or name. They can say "
+                             "'for myself' to switch back to their own picks:\n" + recs)
+                else:
+                    L.append("STEP 1 — In THIS reply, present these EXACT picks now — actually show the "
+                             "list, do NOT say you'll fetch/find them. Keep every product name, price and "
+                             "⭐ exactly as written; include all of them; invite a choice by number or name. "
+                             "If they say they're shopping for someone else (e.g. their kid or wife), use "
+                             "browse_for:\n" + catalogue.recommend_markdown(prefs))
             elif step == 2:
                 du = prefs.get("default_address")
                 if du:
@@ -159,7 +174,9 @@ def _shopping_context(uid, first_turn: bool) -> str:
 def _inject_context(callback_context: CallbackContext, llm_request: LlmRequest):
     first_turn = not callback_context.state.get("greeted")
     callback_context.state["greeted"] = True
-    llm_request.append_instructions([_shopping_context(_uid(callback_context), first_turn)])
+    shopping_for = callback_context.state.get("shopping_for")
+    llm_request.append_instructions(
+        [_shopping_context(_uid(callback_context), first_turn, shopping_for)])
     return None
 
 
@@ -193,7 +210,44 @@ def recommend_products(tool_context: ToolContext = None) -> dict:
     """Return the current EXACT recommendation lines (filtered by profile, priced in
     the shopper's currency) for you to present. Keep names/prices verbatim."""
     prefs = preferences.get_preferences(_uid(tool_context))
+    sf = tool_context.state.get("shopping_for") if tool_context else None
+    if sf:
+        return {"picks_markdown": catalogue.recommend_markdown(
+            prefs, gender=sf.get("gender", ""), age_group=sf.get("age_group", "any"),
+            interests=sf.get("interests", []), for_label=sf.get("label", "them"))}
     return {"picks_markdown": catalogue.recommend_markdown(prefs)}
+
+
+def browse_for(recipient: str = "", gender: str = "", age: str = "",
+               interests: list[str] = None, tool_context: ToolContext = None) -> dict:
+    """Show recommendations for SOMEONE ELSE the shopper is buying for (e.g. their
+    kid or wife), filtered by THAT person's gender/age instead of the shopper's own
+    profile. Call this whenever the shopper says they're shopping for another person.
+    Pass recipient='myself' to switch back to the shopper's own picks.
+
+    Args:
+        recipient: who they're shopping for, e.g. "my daughter", "my wife", "my kid".
+        gender: that person's gender (male/female) if known; leave blank if not.
+        age: that person's age (a number) if known; leave blank if not.
+        interests: the RECIPIENT's interests if the shopper mentions them (e.g.
+            "my son loves gaming" → ["gaming"]). These rank the recipient's picks
+            (⭐) — do NOT pass the shopper's own interests here.
+    """
+    uid = _uid(tool_context)
+    prefs = preferences.get_preferences(uid)
+    label = (recipient or "").strip()
+    if label.lower().replace("for ", "") in ("me", "myself", "self", ""):
+        if tool_context:
+            tool_context.state.pop("shopping_for", None)
+        return {"picks_markdown": catalogue.recommend_markdown(prefs), "shopping_for": "myself"}
+    g = (gender or "").strip().lower()
+    ag = preferences.age_group(age) if str(age).strip() else "any"
+    ints = [i.strip() for i in (interests or []) if i and i.strip()]
+    if tool_context:
+        tool_context.state["shopping_for"] = {"label": label, "gender": g,
+                                              "age_group": ag, "interests": ints}
+    return {"picks_markdown": catalogue.recommend_markdown(
+        prefs, gender=g, age_group=ag, interests=ints, for_label=label), "shopping_for": label}
 
 
 def select_product(product: str, tool_context: ToolContext = None) -> dict:
@@ -235,6 +289,8 @@ def confirm_order(tool_context: ToolContext = None) -> dict:
     """Step 4 → 5: finalize the order (demo only — no real payment). Returns the
     order id to show the shopper."""
     rec = order_mod.confirm(_uid(tool_context))
+    if tool_context:  # next order defaults back to shopping for themselves
+        tool_context.state.pop("shopping_for", None)
     return {"status": "confirmed", "order_id": rec.get("order_id"),
             "product": rec.get("product_name")}
 
@@ -310,7 +366,9 @@ root_agent = LlmAgent(
         "\n"
         "Run the flow with your tools: set_preferences (onboarding AND any later single-field "
         "preference change — pass only what changed, use the currency arg for a currency change); "
-        "select_product; set_shipping_address; set_payment_method; confirm_order.\n"
+        "browse_for (when they're shopping for someone ELSE like their kid or wife — pass that "
+        "person's gender/age; recipient='myself' switches back); select_product; "
+        "set_shipping_address; set_payment_method; confirm_order.\n"
         "\n"
         "Important behaviours: (a) after ANY preference change that affects recommendations, "
         "IMMEDIATELY show the updated picks from [Context] in the SAME reply — never say you'll "
@@ -322,7 +380,7 @@ root_agent = LlmAgent(
         "sprinkle, don't spam; one or two per message is plenty, and keep the product emojis "
         "already in the picks list."
     ),
-    tools=[set_preferences, recommend_products, select_product,
+    tools=[set_preferences, recommend_products, browse_for, select_product,
            set_shipping_address, set_payment_method, confirm_order],
     before_model_callback=_inject_context,
     after_model_callback=_after_model,

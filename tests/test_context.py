@@ -57,8 +57,8 @@ def test_recommendations_filter_by_profile_and_currency():
                                         age="30", interests=["fitness"])
     picks = catalogue.recommend(prefs, limit=6)
     assert picks, "should recommend something"
-    # no women-only products for a male shopper
-    assert all(p["gender"] in ("any", "male") for p in picks)
+    # no women-only products for a male shopper (male↔men normalization)
+    assert all(p["gender"] != "women" for p in picks)
     # interest match bubbles to the top and is flagged
     assert picks[0]["matched_interests"]
     # price formatted in INR (₹, x83)
@@ -172,6 +172,35 @@ def test_tools_run_full_flow():
     assert agent.set_payment_method("cash", tool_context=tc)["payment_method"] == "cash on delivery"
     out = agent.confirm_order(tool_context=tc)
     assert out["status"] == "confirmed" and out["order_id"]
+
+
+def test_browse_for_someone_else_filters_by_their_demographics():
+    tc = _TC("dad@x.com")
+    agent.set_preferences(country="USA", gender="male", age="40", interests=["fitness"], tool_context=tc)
+    # shopping for a kid → filtered by the kid's age, not dad's
+    md = agent.browse_for(recipient="my kid", age="8", tool_context=tc)["picks_markdown"]
+    assert "Picks for **my kid**" in md and "Building Blocks" in md   # a kids' item surfaces
+    assert tc.state["shopping_for"]["age_group"] == "kid"
+    # step-1 context uses the recipient filter
+    ctx = agent._shopping_context("dad@x.com", first_turn=False, shopping_for=tc.state["shopping_for"])
+    assert "buying for my kid" in ctx and "Building Blocks" in ctx
+    # shopping for wife → women/any products (female↔women normalization surfaces
+    # the women's Skincare Gift Set)
+    wife_md = agent.browse_for(recipient="my wife", gender="female", age="35", tool_context=tc)["picks_markdown"]
+    assert tc.state["shopping_for"]["gender"] == "female"
+    assert "Skincare Gift Set" in wife_md
+    # ...and a male shopper's OWN picks never include the women's set
+    dad_md = agent.browse_for(recipient="myself", tool_context=tc)["picks_markdown"]
+    assert "Skincare Gift Set" not in dad_md
+    # recipient's OWN interests rank their picks (⭐), not the shopper's
+    son_md = agent.browse_for(recipient="my son", gender="male", age="15",
+                              interests=["gaming"], tool_context=tc)["picks_markdown"]
+    first_line = son_md.splitlines()[1]              # line after the "Picks for" header
+    assert "⭐" in first_line and "gaming" in first_line.lower()
+
+    # switch back to self clears the override
+    agent.browse_for(recipient="myself", tool_context=tc)
+    assert "shopping_for" not in tc.state
 
 
 def test_address_and_payment_remembered_and_suggested_next_order():
