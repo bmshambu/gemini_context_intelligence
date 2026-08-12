@@ -72,8 +72,70 @@ Typing **"clear memory"** (or "reset demo") deterministically wipes **both** tie
 and re-arms onboarding, so the flow can be shown from scratch. It's a presenter
 utility, not a shopper-facing feature.
 
+## Surrounding awareness — proactive alerts (proposed, for stakeholder review)
+
+The next capability: the agent watches the shopper's world **while they're away**
+and proactively alerts them when something relevant changes. For us that's a
+**price drop** on an item they care about.
+
+> The shopper left the **Smartwatch (₹12,367)** in their cart on Friday. Over the
+> weekend an hourly watcher sees it drop to **₹9,900** and records an alert. On
+> Monday the agent greets: *"Good news — the Smartwatch in your cart dropped to
+> ₹9,900 while you were away. Want to finish that order?"*
+
+**What's watched** reuses our two-tier memory: the shopper's **interests**
+(permanent) + their **in-progress order** (temporary) form the "watch list".
+
+### The one constraint
+
+GE chat is **turn-based** — an agent cannot push an unsolicited bubble into an
+idle chat session, and its in-agent send tool needs a live user session. So a
+proactive alert is delivered one of two ways:
+
+- **Path 1 — Surface on return (GE-native):** store the alert; the opener announces
+  it on the shopper's next visit. No external setup; reuses our opener + memory.
+- **Path 2 — True push ("drag you back"):** a background Google Chat DM / email with
+  a deep link back to GE. More powerful, but needs a separate Chat app + service
+  account + Workspace admin setup.
+
+### Runs in the cloud — the shopper's device can be off
+
+All watching happens **server-side** (Cloud Scheduler + a background job + the alert
+store). The laptop/browser is only how the shopper *reads* the alert later; closing
+it does not stop the scan.
+
+### Flow
+
+```mermaid
+flowchart TD
+    U["🧑 Shopper adds the Smartwatch to cart<br/>(₹12,367), then logs off"] --> A
+    A["⏰ Scheduler (hourly)"] --> B["🔎 Background job<br/>checks watched items vs current prices"]
+    B --> C{"Price drop on a<br/>watched item?"}
+    C -- "no" --> Z["✅ done — wait for next hour"]
+    C -- "yes" --> D["📝 Write alert to store<br/>Memory Bank / Firestore<br/>{user, item, ₹old → ₹new}"]
+    D --> E{"Delivery path"}
+    E -- "Path 1 · GE-native" --> F["🟢 Surface on return<br/>opener announces the drop<br/>when the shopper reopens GE"]
+    E -- "Path 2 · push" --> G["🔔 Google Chat DM / email<br/>with a deep link back to GE"]
+    G --> H["shopper taps the link →<br/>back in the GE agent"]
+    F --> I["🛒 Shopper finishes the order"]
+    H --> I
+
+    subgraph CLOUD["☁️ Runs in Google Cloud — the shopper's laptop can be OFF"]
+        A
+        B
+        C
+        D
+    end
+```
+
+### Recommended phasing
+
+- **Phase 1 — Surface on return** (fast, GE-native, demo-ready): mock price watcher
+  + alert record + opener announces drops on return.
+- **Phase 2 — True push** (Google Chat / email + deep link) to actively pull the
+  shopper back; adds Workspace/admin setup.
+
 ## Later
 
 - Localize the deterministic opener into the chosen language.
-- Real "surrounding context" (stock, offers) and a richer catalogue.
 - Re-add A2UI (product cards, buttons for steps) on top of this memory foundation.
