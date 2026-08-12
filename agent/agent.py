@@ -64,7 +64,6 @@ def _name_from_uid(uid: str | None) -> str:
 def _prefs_summary(p: dict) -> str:
     return (f"country={p.get('country')}, currency={p.get('currency_code')} "
             f"({p.get('currency_symbol')}), language={p.get('language')}, "
-            f"gender={p.get('gender')}, age={p.get('age')} ({p.get('age_group')}), "
             f"interests={', '.join(p.get('interests') or []) or 'none'}")
 
 
@@ -100,7 +99,8 @@ def _shopping_context(uid, first_turn: bool, shopping_for: dict | None = None) -
 
     if not preferences.is_complete(prefs):
         onboarding = ("ONBOARDING: no saved profile yet. In one message, invite them to share their "
-                      "country, preferred language, gender, age, and any interests; then call set_preferences.")
+                      "country, preferred language, and any interests; then call set_preferences. "
+                      "Do NOT ask for their gender or age.")
         # Proactive name handling at onboarding (stored in permanent memory):
         #  - no usable name from the email (e.g. it has digits) → ask what to call them
         #  - name is long → offer a shorter nickname
@@ -181,17 +181,15 @@ def _inject_context(callback_context: CallbackContext, llm_request: LlmRequest):
 
 
 # ── tools ────────────────────────────────────────────────────────────────────
-def set_preferences(country: str = "", language: str = "", gender: str = "",
-                    age: str = "", interests: list[str] = None, currency: str = "",
-                    name: str = "", tool_context: ToolContext = None) -> dict:
-    """Save or UPDATE the shopper's PERMANENT profile. Use at onboarding (all
-    fields) AND anytime they change a single preference later — pass ONLY the
-    field(s) that changed; the rest is kept.
+def set_preferences(country: str = "", language: str = "", interests: list[str] = None,
+                    currency: str = "", name: str = "", tool_context: ToolContext = None) -> dict:
+    """Save or UPDATE the shopper's PERMANENT profile. Use at onboarding AND anytime
+    they change a single preference later — pass ONLY the field(s) that changed; the
+    rest is kept. Never collect the shopper's gender or age.
 
     Args:
         country: sets the display currency (unless `currency` overrides it).
         language: how you communicate with them.
-        gender, age: used to filter recommendations.
         interests: the FULL desired interests list when changing interests.
         currency: an explicit currency code (e.g. "USD", "INR") to show prices in,
             independent of country — use when they say "show prices in USD".
@@ -200,10 +198,10 @@ def set_preferences(country: str = "", language: str = "", gender: str = "",
     """
     rec = preferences.set_preferences(
         _uid(tool_context),
-        country=country or None, language=language or None, gender=gender or None,
-        age=age or None, interests=interests, currency=currency or None, name=name or None,
+        country=country or None, language=language or None,
+        interests=interests, currency=currency or None, name=name or None,
     )
-    return {"status": "saved", "currency": rec["currency_code"], "age_group": rec["age_group"]}
+    return {"status": "saved", "currency": rec["currency_code"]}
 
 
 def recommend_products(tool_context: ToolContext = None) -> dict:
@@ -357,6 +355,10 @@ root_agent = LlmAgent(
         "You are a warm, personable e-commerce shopping companion in Gemini Enterprise. "
         "Reply in clear markdown, in the shopper's preferred language, and address the shopper "
         "by name when the [Context] provides one.\n"
+        "\n"
+        "Privacy: never ask the shopper for their OWN gender or age — you don't need them. "
+        "(You may ask a GIFT recipient's age/gender only if the shopper is buying for someone "
+        "else and offers it.)\n"
         "\n"
         "Each turn a [Context] note gives you the shopper's saved profile, the exact "
         "recommendation/order data to convey, and what to do this step. Speak it in your "

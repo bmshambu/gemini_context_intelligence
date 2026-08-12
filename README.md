@@ -5,7 +5,7 @@ A single Gemini Enterprise agent (ADK → Vertex AI Agent Engine → GE chat) wi
 Markdown output for now (A2UI later). See [DESIGN.md](DESIGN.md) for rationale.
 
 ```
-Onboarding → country/language/gender/age/interests            (PERMANENT memory)
+Onboarding → country/language/interests                       (PERMANENT memory)
 Step 1  What would you like to buy?  → picks filtered by profile, priced in your currency
 Step 2  Shipping address
 Step 3  Payment (cash on delivery / card)
@@ -24,7 +24,8 @@ doing now — 3-day TTL), and **Transient** (this session only). Deterministic d
 
 | Capability | Scope | Lifespan | Shown in |
 |---|---|---|---|
-| Profile: country → **currency**, language, gender, age | 🟢 Permanent | Never expires | Conv 1 |
+| Profile: country → **currency**, language, interests | 🟢 Permanent | Never expires | Conv 1 |
+| _Gender & age are **not** collected/stored for the shopper (privacy)_ | — | — | — |
 | **Preferred name / nickname** (asked at onboarding if email name is long/undecodable) | 🟢 Permanent | Never | Conv 1 |
 | **Interests** (add / change anytime — partial update, rest kept) | 🟢 Permanent | Never | Conv 2 |
 | **Currency override** (see prices in USD even though country = India) | 🟢 Permanent | Never | Conv 2 |
@@ -69,11 +70,11 @@ and framing will read a little differently each run while the data stays identic
 **🤖 Companion:**
 > ## 🛍️ Welcome!
 > Let's set up your shopping profile so I can personalize prices and picks. Please tell me:
-> - **Country** (sets your currency) · **Language** · **Gender** · **Age** · **Any interests** (optional)
+> - **Country** (sets your currency) · **Language** · **Any interests** (optional)
 
-**🧑 Shopper:** India, English, male, 30, into fitness and tech
+**🧑 Shopper:** India, English, into fitness and tech
 
-> 💾 **Permanent memory written** — profile saved: country **India** → currency **INR ₹**, gender male, age 30 (adult), interests fitness + tech.
+> 💾 **Permanent memory written** — profile saved: country **India** → currency **INR ₹**, interests fitness + tech. _(Gender & age are not collected.)_
 
 **🤖 Companion:**
 > ### 🛍️ Step 1 of 5 — What would you like to buy?
@@ -132,7 +133,7 @@ Returning shopper (profile: **India**, INR, interests fitness + tech). The opene
 
 **🧑 Shopper:** Actually, show me prices in USD
 
-> 💾 **Permanent memory updated** — currency → **USD $** only. Country stays **India**; gender/age/interests untouched.
+> 💾 **Permanent memory updated** — currency → **USD $** only. Country stays **India**; language/interests untouched.
 
 **🤖 Companion:**
 > Sure — prices now in **USD** 💵:
@@ -181,8 +182,9 @@ Shows that the agent separates **who's shopping** (permanent profile) from **who
 the item is for** (a transient "shopping for" context) — and that it filters and
 ranks by the *recipient*, never the shopper.
 
-Setup: the shopper is **Rahul** (male, 40, interests fitness + tech, India → ₹).
-His own picks lead with fitness/tech gear (⌚ Smartwatch, 🧘 Yoga Mat…) — ⭐ = his interests.
+Setup: the shopper is **Rahul** (interests fitness + tech, India → ₹). His own picks
+lead with fitness/tech gear (⌚ Smartwatch, 🧘 Yoga Mat…) — ⭐ = his interests. (We
+don't store Rahul's gender or age — his picks are interest-ranked.)
 
 **🧑 Shopper:** I'm looking for something for my kid
 
@@ -219,7 +221,7 @@ His own picks lead with fitness/tech gear (⌚ Smartwatch, 🧘 Yoga Mat…) —
   recipient's **interests rank** it (⭐). The shopper's own interests are never
   applied to a gift list — a dad's "fitness" shouldn't sort his kid's toys.
 - **Nothing is overwritten:** "shopping for my kid" is transient (session only) —
-  Rahul's permanent profile (male, 40, fitness/tech, ₹) is untouched throughout.
+  Rahul's permanent profile (fitness/tech, ₹) is untouched throughout.
   This is the permanent-vs-temporary split in action.
 
 **Demo reset:** type **"clear memory"** between runs to wipe both tiers and start from onboarding.
@@ -228,7 +230,7 @@ His own picks lead with fitness/tech gear (⌚ Smartwatch, 🧘 Yoga Mat…) —
 
 | Tier | Holds | Lifespan |
 |---|---|---|
-| **Persona** (permanent) | profile: country, language, gender, age, interests, currency | never expires |
+| **Persona** (permanent) | profile: country, language, interests, currency (no gender/age) | never expires |
 | **Task** (temporary) | in-progress order (step, product, address, payment) | **3-day TTL** (auto-destroyed) |
 
 Keyed by `{app_name, user_id, tier}`; one keep-latest record per tier. Verified
@@ -240,7 +242,7 @@ genai-client Memory Bank API; mock fallback for local runs.
 gemini_context_intelligence/
   agent/
     store.py        two-tier Memory Bank backend (+ mock, TTL, keep-latest, clear)
-    preferences.py  permanent profile + country→currency + age group
+    preferences.py  permanent profile + country→currency (no gender/age for the shopper)
     order.py        temporary 5-step order state (3-day TTL)
     catalogue.py    mock products + preference-based recommend + currency pricing
     briefing.py     branching opener (onboarding / resume / step-1 recommendations)

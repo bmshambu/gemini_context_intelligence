@@ -57,10 +57,12 @@ def age_group(age) -> str:
     return "senior"
 
 
-def set_preferences(user_id, country=None, language=None, gender=None, age=None,
-                    interests=None, currency=None, name=None,
-                    default_address=None, default_payment=None) -> dict:
+def set_preferences(user_id, country=None, language=None, interests=None, currency=None,
+                    name=None, default_address=None, default_payment=None) -> dict:
     """Upsert the permanent profile, MERGING over what's already saved.
+
+    Note: gender & age are intentionally NOT collected or stored for the shopper
+    (privacy). Recommendations for the shopper are ranked by interests only.
 
     Every arg is optional so the shopper can update a single preference anytime
     (e.g. only currency) without wiping the rest. Currency resolution:
@@ -79,10 +81,6 @@ def set_preferences(user_id, country=None, language=None, gender=None, age=None,
         rec["country"] = str(country).strip()
     if language is not None and str(language).strip():
         rec["language"] = str(language).strip()
-    if gender is not None and str(gender).strip():
-        rec["gender"] = str(gender).strip().lower()
-    if age is not None and str(age).strip():
-        rec["age"] = age
     if interests is not None:  # replace the full list when provided
         rec["interests"] = [i.strip() for i in interests if i and i.strip()]
     # Remembered checkout conveniences (offered on later orders, always overridable)
@@ -100,10 +98,8 @@ def set_preferences(user_id, country=None, language=None, gender=None, age=None,
     elif "currency_code" not in rec:
         rec["currency_code"], rec["currency_symbol"], rec["currency_rate"] = _DEFAULT_CURRENCY
 
-    # derived / defaults
     rec.setdefault("language", "English")
     rec.setdefault("interests", [])
-    rec["age_group"] = age_group(rec.get("age"))
 
     store.remember(user_id, store.TIER_PERSONA, _PROFILE_KEY, rec, ttl_seconds=None)
     return rec
@@ -123,6 +119,6 @@ def save_defaults(user_id, address=None, payment=None) -> None:
 
 
 def is_complete(prefs: dict | None) -> bool:
-    """Enough captured to personalize (country + age + gender give currency + filters)."""
-    return bool(prefs and prefs.get("country") and prefs.get("age") not in (None, "")
-                and prefs.get("gender"))
+    """Enough captured to personalize — country gives the currency. Gender/age are
+    no longer collected for the shopper."""
+    return bool(prefs and prefs.get("country"))

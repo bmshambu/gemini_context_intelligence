@@ -10,7 +10,8 @@ Ask the shopper's preferences upfront, then guide a 5-step checkout that's
 personalized by those preferences and resumable if they leave mid-way.
 
 - **Historical context** (permanent): country → currency (₹ / $), language →
-  how we talk, gender + age → what we show, interests → what we highlight.
+  how we talk, interests → what we recommend & highlight. (Gender & age are not
+  collected/stored for the shopper — privacy.)
 - **Forward looking** (temporary): the in-progress order — which of the 5 steps
   they're on — surfaced as a "resume where you left off" hint when they return.
 
@@ -18,7 +19,7 @@ personalized by those preferences and resumable if they leave mid-way.
 
 | Tier | Holds | Lifespan | Scope |
 |---|---|---|---|
-| **Persona** (permanent) | profile: country, language, gender, age, interests, currency | no expiry | `{app_name, user_id, tier:"persona"}` |
+| **Persona** (permanent) | profile: country, language, interests, currency (no gender/age) | no expiry | `{app_name, user_id, tier:"persona"}` |
 | **Task** (temporary) | the in-progress order (step, product, address, payment) | **3-day TTL** | `{app_name, user_id, tier:"task"}` |
 
 One keep-latest record per tier (`profile`, `order`). Task record carries a TTL so
@@ -27,7 +28,7 @@ an abandoned cart clears itself. Verified genai-client Memory Bank API; mock fal
 ## The 5-step flow
 
 ```
-onboarding → capture country/language/gender/age/interests  (writes PERSONA)
+onboarding → capture country/language/interests  (writes PERSONA; no gender/age)
 step 1  What would you like to buy?   → recommendations filtered by profile, priced in currency
 step 2  Shipping address
 step 3  Payment method (cash on delivery / card)
