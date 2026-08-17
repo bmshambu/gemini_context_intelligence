@@ -4,8 +4,12 @@
 # CI/CD. It writes alerts to the SAME Memory Bank the deployed GE agent reads.
 #
 # Prereqs: gcloud auth login; enable APIs (run, cloudscheduler, aiplatform,
-# cloudbuild, artifactregistry). Fill these in (or export before running):
+# cloudbuild, artifactregistry).
 set -euo pipefail
+
+# Values come from the environment (see below). For convenience, drop them in a
+# local, gitignored watcher.env (copy watcher.env.example) and this sources it:
+[ -f ./watcher.env ] && source ./watcher.env
 
 PROJECT_ID="${PROJECT_ID:-your-project-id}"
 REGION="${REGION:-us-central1}"

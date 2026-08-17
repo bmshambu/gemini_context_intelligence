@@ -1,0 +1,5 @@
+# Local config with your project/engine ids — never commit it.
+watcher.env
+
+__pycache__/
+*.pyc

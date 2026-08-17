@@ -32,6 +32,16 @@ via `memory_client.py`, so the Docker build context is just this folder.
 
 ## Deploy (run from this folder)
 
+Config comes from env vars. Easiest: copy the template and fill it in — the deploy
+script sources it automatically:
+
+```bash
+cp watcher.env.example watcher.env    # then edit watcher.env (gitignored)
+bash deploy_watcher.sh
+```
+
+Or pass them inline instead of using the file:
+
 ```bash
 PROJECT_ID=your-proj REGION=us-central1 \
 AGENT_ENGINE_ID=projects/.../reasoningEngines/... WATCH_USER=you@yourco.com \
