@@ -254,7 +254,7 @@ def browse_for(recipient: str = "", gender: str = "", age: str = "",
     label = (recipient or "").strip()
     if label.lower().replace("for ", "") in ("me", "myself", "self", ""):
         if tool_context:
-            tool_context.state.pop("shopping_for", None)
+            tool_context.state["shopping_for"] = None  # ADK State has no .pop()
         return {"picks_markdown": catalogue.recommend_markdown(prefs), "shopping_for": "myself"}
     g = (gender or "").strip().lower()
     ag = preferences.age_group(age) if str(age).strip() else "any"
@@ -306,7 +306,7 @@ def confirm_order(tool_context: ToolContext = None) -> dict:
     order id to show the shopper."""
     rec = order_mod.confirm(_uid(tool_context))
     if tool_context:  # next order defaults back to shopping for themselves
-        tool_context.state.pop("shopping_for", None)
+        tool_context.state["shopping_for"] = None  # ADK State has no .pop()
     return {"status": "confirmed", "order_id": rec.get("order_id"),
             "product": rec.get("product_name")}
 
@@ -359,7 +359,10 @@ def _after_model(callback_context: CallbackContext, llm_response: LlmResponse):
     # LLM conveys freshly from the injected [Context] data.
     if _wants_clear(_latest_user_text(callback_context)):
         store.clear(uid)
-        callback_context.state.clear()
+        # ADK State has no .clear()/.pop() — reset the flags we set, by assignment.
+        callback_context.state["greeted"] = False
+        callback_context.state["shopping_for"] = None
+        callback_context.state["_alerts_pending"] = False
         _set_text(content, "🧹 **Memory cleared** — your profile and any in-progress order are "
                            "gone. Say hello to start fresh.")
         _maybe_identity(content, uid)
@@ -367,7 +370,8 @@ def _after_model(callback_context: CallbackContext, llm_response: LlmResponse):
 
     # A pending price-drop alert was just delivered as text → clear it so a returning
     # shopper sees it once, not on every turn.
-    if callback_context.state.pop("_alerts_pending", False):
+    if callback_context.state.get("_alerts_pending", False):
+        callback_context.state["_alerts_pending"] = False
         alerts.clear_alerts(uid)
 
     _maybe_identity(content, uid)

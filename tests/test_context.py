@@ -149,9 +149,28 @@ def test_saved_nickname_overrides_email_name_and_stops_prompt():
 
 
 # ── tools + demo reset ───────────────────────────────────────────────────────
+class _State:
+    """Mimics ADK's session State: get / [] / in — but NO .pop()/.clear() (which
+    the deployed State lacks), so tests catch use of dict-only methods."""
+    def __init__(self):
+        self._d = {}
+
+    def get(self, k, default=None):
+        return self._d.get(k, default)
+
+    def __getitem__(self, k):
+        return self._d[k]
+
+    def __setitem__(self, k, v):
+        self._d[k] = v
+
+    def __contains__(self, k):
+        return k in self._d
+
+
 class _TC:
     def __init__(self, uid="tool@x.com"):
-        self.state = {}
+        self.state = _State()
         self.user_id = uid
 
 
@@ -187,9 +206,9 @@ def test_browse_for_someone_else_filters_by_their_demographics():
     first_line = son_md.splitlines()[1]              # line after the "Picks for" header
     assert "⭐" in first_line and "gaming" in first_line.lower()
 
-    # switch back to self clears the override
+    # switch back to self clears the override (set to None, not removed)
     agent.browse_for(recipient="myself", tool_context=tc)
-    assert "shopping_for" not in tc.state
+    assert not tc.state.get("shopping_for")
 
 
 def test_address_and_payment_remembered_and_suggested_next_order():
@@ -225,6 +244,30 @@ def test_price_drop_alert_surfaces_on_return_then_clears():
     # once surfaced, clearing removes it so it isn't shown again
     alerts.clear_alerts(uid)
     assert alerts.get_alerts(uid) == []
+
+
+def test_after_model_clears_alert_without_dict_state_methods():
+    # Regression: deployed ADK State has no .pop()/.clear(); _after_model must not use them.
+    from google.genai import types as gt
+    uid = "clr2@x.com"
+    preferences.set_preferences(uid, country="India")
+    alerts.add_alert(uid, "p08", "Smartwatch (Fitness+)", "₹12,367", "₹9,894")
+
+    class _CC:
+        def __init__(self):
+            self.state = _State()
+            self.state["_alerts_pending"] = True
+            self.user_id = uid
+            self.user_content = gt.Content(role="user", parts=[gt.Part(text="hi")])
+
+    class _Resp:
+        partial = False
+        content = gt.Content(role="model", parts=[gt.Part(text="Welcome back!")])
+
+    cc, resp = _CC(), _Resp()
+    agent._after_model(cc, resp)                       # must NOT raise AttributeError
+    assert alerts.get_alerts(uid) == []                # alert cleared once delivered
+    assert cc.state.get("_alerts_pending") is False
 
 
 def test_clear_memory_wipes_all_tiers():
