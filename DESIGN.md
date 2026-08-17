@@ -130,8 +130,13 @@ flowchart TD
 
 ### Recommended phasing
 
-- **Phase 1 — Surface on return** (fast, GE-native, demo-ready): mock price watcher
-  + alert record + opener announces drops on return.
+- **Phase 1 — Surface on return** ✅ **implemented.** Watcher = a **Cloud Run Job**
+  in its own **`watcher/`** folder (deploys separately from the agent), triggered
+  hourly by **Cloud Scheduler** (`watcher/deploy_watcher.sh`). It writes a price-drop
+  alert to the alert tier of Memory Bank via its own minimal client
+  (`watcher/memory_client.py`, sharing the fact/scope contract with `agent/store.py`);
+  the agent (`agent/alerts.py` + opener) leads with it on return, then clears it.
+  Runs in GCP — laptop off.
 - **Phase 2 — True push** (Google Chat / email + deep link) to actively pull the
   shopper back; adds Workspace/admin setup.
 

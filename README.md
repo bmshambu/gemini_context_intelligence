@@ -224,7 +224,44 @@ don't store Rahul's gender or age — his picks are interest-ranked.)
   Rahul's permanent profile (fitness/tech, ₹) is untouched throughout.
   This is the permanent-vs-temporary split in action.
 
-**Demo reset:** type **"clear memory"** between runs to wipe both tiers and start from onboarding.
+### Conversation 4 — surrounding awareness (price-drop alert on return)
+
+The **surface-on-return** half of proactive alerts: a background watcher runs while
+the shopper is away and records a price drop; the agent leads with it when they
+come back. (See DESIGN.md → *Surrounding awareness* for the full architecture.)
+
+Setup: Rahul left the **Smartwatch (₹12,367)** in his cart and logged off.
+
+**Background (runs in GCP — no chat, laptop off):** the watcher is a **Cloud Run Job**
+triggered by **Cloud Scheduler** (hourly). Each run scans the shopper's watched item,
+"sees" the price drop, and writes an alert to Memory Bank. For a live demo, execute
+it once for an immediate alert:
+
+```bash
+gcloud run jobs execute price-watcher --project YOUR_PROJECT --region us-central1
+# [watcher] rahul@acme.com: Smartwatch (Fitness+) ₹12,367 → ₹9,877 (-20%). Alert written.
+```
+
+_(The watcher lives in the separate [`watcher/`](watcher/) folder — deploy it with
+`watcher/deploy_watcher.sh`; see below.)_
+
+**Later — Rahul reopens the assistant:**
+
+**🧑 Shopper:** hi
+
+**🤖 Companion:**
+> 🎉 Welcome back, Rahul! Good news while you were away — the **Smartwatch (Fitness+)**
+> in your cart dropped from ₹12,367 to **₹9,877**. Want to finish that order? You were
+> at the shipping-address step.
+
+> 🟢 Alert was **written by the background job** and **surfaced by the opener** — then
+> cleared, so it shows once. Points to make: the scan ran server-side (laptop off),
+> and the watch list came from memory (his cart + interests).
+
+**Demo tip:** for a live run, `--drop-after 0` writes the alert instantly; the GE
+demo needs the agent + watcher on the SAME Memory Bank (`USE_MEMORY_BANK=true`).
+
+**Demo reset:** type **"clear memory"** between runs to wipe all tiers and start from onboarding.
 
 ## Two memory tiers (one Memory Bank, split by scope)
 
@@ -285,6 +322,21 @@ apply them by filling `PROJECT_ID`/`ENGINE_ID` in `set_starter_prompts.sh` and r
 
 ```bash
 PROJECT_ID=your-proj ENGINE_ID=your-ge-app-id bash set_starter_prompts.sh
+```
+
+### Background watcher (separate folder — deploy independently)
+
+The surrounding-awareness watcher lives in its own **[`watcher/`](watcher/)** folder
+so it deploys **separately** from this agent (your agent CI/CD doesn't touch it). It's
+a Cloud Run Job triggered hourly by Cloud Scheduler, running in GCP (laptop off), and
+it writes price-drop alerts to the SAME Memory Bank this agent reads — so deploy the
+agent with `USE_MEMORY_BANK=true`, and keep `MEMORY_APP_NAME` matching on both sides
+(default `shopping_companion`). See [`watcher/README.md`](watcher/README.md).
+
+```bash
+cd watcher && PROJECT_ID=your-proj REGION=us-central1 \
+  AGENT_ENGINE_ID=projects/.../reasoningEngines/... WATCH_USER=you@yourco.com \
+  bash deploy_watcher.sh
 ```
 
 ## Later

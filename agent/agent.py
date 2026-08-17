@@ -29,7 +29,7 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 
-from . import catalogue, order as order_mod, preferences, store
+from . import alerts, catalogue, order as order_mod, preferences, store
 
 # Demo-reset phrases (deterministic — reliable for a live demo, not LLM-judged).
 _CLEAR_PHRASES = (
@@ -73,7 +73,8 @@ def _order_summary_data(order: dict) -> str:
             f"- 💳 Payment: {order.get('payment_method')}")
 
 
-def _shopping_context(uid, first_turn: bool, shopping_for: dict | None = None) -> str:
+def _shopping_context(uid, first_turn: bool, shopping_for: dict | None = None,
+                      alert_list: list[dict] | None = None) -> str:
     """Build the per-turn [Context] note: the exact data + what to do this turn.
 
     The LLM turns this into a fresh, natural, localized message. It must keep the
@@ -81,6 +82,7 @@ def _shopping_context(uid, first_turn: bool, shopping_for: dict | None = None) -
 
     `shopping_for` (transient, from session state) means the shopper is buying for
     someone else — recommendations are filtered by that person's gender/age instead.
+    `alert_list` are pending price-drop alerts to lead the reply with.
     """
     prefs = preferences.get_preferences(uid)
     order = order_mod.get_order(uid)
@@ -164,6 +166,16 @@ def _shopping_context(uid, first_turn: bool, shopping_for: dict | None = None) -
                          "when they confirm you MUST call confirm_order:\n"
                          + _order_summary_data(active))
 
+    # Surrounding awareness: lead with any price-drop alerts a background watcher
+    # left while the shopper was away.
+    if alert_list:
+        drops = "\n".join(
+            f"- {a['product_name']}: was {a['old_price']}, now **{a['new_price']}**"
+            for a in alert_list)
+        L.insert(0, "PRICE ALERT — while the shopper was away, prices dropped on items they were "
+                    "watching. LEAD your reply with this good news (celebrate it 🎉), then continue "
+                    "the flow. Keep the prices EXACTLY as given:\n" + drops)
+
     L.append(f"Convey all of the above in your OWN natural words, in {lang} — vary your phrasing "
              "so it never feels like a fixed template. But keep every product name, price, currency "
              "symbol and order detail EXACTLY as given; never invent products, prices, or facts. "
@@ -175,8 +187,14 @@ def _inject_context(callback_context: CallbackContext, llm_request: LlmRequest):
     first_turn = not callback_context.state.get("greeted")
     callback_context.state["greeted"] = True
     shopping_for = callback_context.state.get("shopping_for")
+    uid = _uid(callback_context)
+    # Pending price-drop alerts are surfaced until delivered, then cleared in
+    # _after_model (robust to tool-call sub-turns).
+    alert_list = alerts.get_alerts(uid)
+    if alert_list:
+        callback_context.state["_alerts_pending"] = True
     llm_request.append_instructions(
-        [_shopping_context(_uid(callback_context), first_turn, shopping_for)])
+        [_shopping_context(uid, first_turn, shopping_for, alert_list)])
     return None
 
 
@@ -344,6 +362,14 @@ def _after_model(callback_context: CallbackContext, llm_response: LlmResponse):
         callback_context.state.clear()
         _set_text(content, "🧹 **Memory cleared** — your profile and any in-progress order are "
                            "gone. Say hello to start fresh.")
+        _maybe_identity(content, uid)
+        return llm_response
+
+    # A pending price-drop alert was just delivered as text → clear it so a returning
+    # shopper sees it once, not on every turn.
+    if callback_context.state.pop("_alerts_pending", False):
+        alerts.clear_alerts(uid)
+
     _maybe_identity(content, uid)
     return llm_response
 

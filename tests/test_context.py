@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent import (  # noqa: E402
-    agent, catalogue, order as order_mod, preferences, store,
+    agent, alerts, catalogue, order as order_mod, preferences, store,
 )
 
 
@@ -212,13 +212,30 @@ def test_address_and_payment_remembered_and_suggested_next_order():
     assert "usually pay by card" in ctx3
 
 
-def test_clear_memory_wipes_both_tiers():
+def test_price_drop_alert_surfaces_on_return_then_clears():
+    uid = "back@x.com"
+    preferences.set_preferences(uid, country="India", interests=["tech"])
+    # background watcher wrote a drop while the shopper was away
+    alerts.add_alert(uid, "p08", "Smartwatch (Fitness+)", "₹12,367", "₹9,894", drop_pct=20)
+    pending = alerts.get_alerts(uid)
+    assert pending and pending[0]["new_price"] == "₹9,894"
+    # opener leads with the alert (exact prices preserved)
+    ctx = agent._shopping_context(uid, first_turn=True, alert_list=pending)
+    assert "PRICE ALERT" in ctx and "Smartwatch (Fitness+)" in ctx and "₹9,894" in ctx
+    # once surfaced, clearing removes it so it isn't shown again
+    alerts.clear_alerts(uid)
+    assert alerts.get_alerts(uid) == []
+
+
+def test_clear_memory_wipes_all_tiers():
     u = "clr@x.com"
     preferences.set_preferences(u, country="USA")
     order_mod.set_product(u, "p01", "Headphones", "$199")
+    alerts.add_alert(u, "p01", "Headphones", "$199", "$159")
     store.clear(u)
-    assert preferences.get_preferences(u) is None
-    assert order_mod.get_order(u) is None
+    assert preferences.get_preferences(u) is None    # permanent gone
+    assert order_mod.get_order(u) is None             # temporary gone
+    assert alerts.get_alerts(u) == []                 # alerts gone
 
 
 def test_wants_clear_matches_demo_phrases():

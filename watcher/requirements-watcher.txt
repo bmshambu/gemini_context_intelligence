@@ -1,0 +1,3 @@
+# Only Memory Bank access is needed — no ADK, no agent deps.
+# Pinned to the same aiplatform as the agent so the Memory Bank API matches.
+google-cloud-aiplatform[agent_engines]==1.148.1
