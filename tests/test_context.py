@@ -270,6 +270,35 @@ def test_after_model_clears_alert_without_dict_state_methods():
     assert cc.state.get("_alerts_pending") is False
 
 
+def test_order_write_is_stamped_and_latest_wins():
+    u = "stamp@x.com"
+    order_mod.set_product(u, "p04", "Building Blocks", "$29")
+    order_mod.set_product(u, "p03", "Yoga Mat", "$39")   # newer selection replaces it
+    o = order_mod.get_order(u)
+    assert o["product_name"] == "Yoga Mat"               # latest wins, not stale
+    assert o.get("_saved_at")                            # every write is timestamped
+    assert order_mod._ts({"_saved_at": 2.0}) > order_mod._ts({"_saved_at": 1.0})
+
+
+def test_clear_cart_empties_order_keeps_profile():
+    tc = _TC("cart@x.com")
+    preferences.set_preferences("cart@x.com", country="India", interests=["fitness"])
+    order_mod.set_product("cart@x.com", "p03", "Yoga Mat", "₹3,237")
+    assert order_mod.get_order("cart@x.com") is not None
+    agent.clear_cart(tool_context=tc)
+    assert order_mod.get_order("cart@x.com") is None                 # cart gone
+    assert preferences.get_preferences("cart@x.com") is not None     # profile kept
+
+
+def test_clear_cart_phrases_detected_but_distinct_from_memory_reset():
+    assert agent._wants_clear_cart("please clear my cart")
+    assert agent._wants_clear_cart("let's start over")
+    assert agent._wants_clear_cart("fresh start")
+    assert not agent._wants_clear_cart("show me the smartwatch")
+    # full memory reset is a different intent, not a cart-clear
+    assert agent._wants_clear("clear memory") and not agent._wants_clear_cart("clear memory")
+
+
 def test_clear_memory_wipes_all_tiers():
     u = "clr@x.com"
     preferences.set_preferences(u, country="USA")

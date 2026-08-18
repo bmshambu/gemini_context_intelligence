@@ -106,10 +106,11 @@ def set_preferences(user_id, country=None, language=None, interests=None, curren
 
 
 def get_preferences(user_id) -> dict | None:
-    for r in store.recall(user_id, store.TIER_PERSONA):
-        if r.get("key") == _PROFILE_KEY:
-            return r
-    return None
+    cands = [r for r in store.recall(user_id, store.TIER_PERSONA) if r.get("key") == _PROFILE_KEY]
+    if not cands:
+        return None
+    cands.sort(key=lambda r: float(r.get("_saved_at") or 0), reverse=True)  # newest wins
+    return cands[0]
 
 
 def save_defaults(user_id, address=None, payment=None) -> None:

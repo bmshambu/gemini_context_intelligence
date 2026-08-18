@@ -52,13 +52,16 @@ def _iter(client, user_id, tier):
 
 
 def get_order(user_id: str) -> dict | None:
-    """Read the shopper's in-progress order (task tier, key 'order'), newest first."""
+    """Read the shopper's in-progress order (task tier, key 'order'), newest first.
+    Uses our own `_saved_at` stamp (reliable) before Memory Bank's update_time."""
     latest, latest_ts = None, -1.0
     for m, rec in _iter(_client(), user_id, TIER_TASK):
         if rec.get("key") != "order":
             continue
-        ut = getattr(m, "update_time", None)
-        ts = ut.timestamp() if ut is not None else 0.0
+        ts = float(rec.get("_saved_at") or 0)
+        if ts == 0:
+            ut = getattr(m, "update_time", None)
+            ts = ut.timestamp() if ut is not None else 0.0
         if ts >= latest_ts:
             latest, latest_ts = rec, ts
     return latest

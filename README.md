@@ -34,6 +34,7 @@ doing now — 3-day TTL), and **Transient** (this session only). Deterministic d
 | **Usual payment method** (offered on repeat orders, overridable) | 🟢 Permanent | Never | repeat order |
 | **In-progress order** (5 steps: product → address → payment → confirm → done) | 🟡 Temporary | 3-day TTL | Conv 1 |
 | **Resume where you left off** (return mid-checkout) | 🟡 Temporary | 3-day TTL; cleared on confirm | Conv 1 |
+| **Clear cart / start over** ("start over", "clear my cart" → empties the order, keeps profile) | 🟡 Temporary | until cleared | any |
 | **Shopping for someone else** (kid / wife → their gender, age, interests) | 🔵 Transient | This session; cleared on confirm or "for myself" | Conv 3 |
 | **Recommendations** (filter by demographics, rank by interests ⭐, currency prices, emojis) | ⚪ Deterministic | — (from catalogue) | Conv 1–3 |
 | **"clear memory"** demo reset (wipes both tiers, re-onboards) | ⚪ Utility | — | between runs |
@@ -261,7 +262,13 @@ _(The watcher lives in the separate [`watcher/`](watcher/) folder — deploy it 
 **Demo tip:** for a live run, `--drop-after 0` writes the alert instantly; the GE
 demo needs the agent + watcher on the SAME Memory Bank (`USE_MEMORY_BANK=true`).
 
-**Demo reset:** type **"clear memory"** between runs to wipe all tiers and start from onboarding.
+**Clear the cart / start over:** say **"start over"**, **"fresh start"**, or **"clear my
+cart"** at any point → the agent empties the in-progress order (keeps your profile) and
+invites you to shop again. Reselecting a product always replaces the previous one — the
+cart never goes stale.
+
+**Demo reset:** type **"clear memory"** between runs to wipe **all** tiers and start from
+onboarding. (Different from "clear cart" — that keeps your profile; this wipes everything.)
 
 ## Two memory tiers (one Memory Bank, split by scope)
 

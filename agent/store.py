@@ -180,8 +180,13 @@ def _mock_remember(user_id, tier, key, record) -> None:
 
 # ── public API ───────────────────────────────────────────────────────────────
 def remember(user_id, tier, key, record, ttl_seconds=None) -> None:
-    """Upsert one record (keep-latest per `key`) in the given tier."""
-    record = {**record, "key": key}
+    """Upsert one record (keep-latest per `key`) in the given tier.
+
+    Stamps `_saved_at` (our own write time) into the record so readers can pick the
+    truly-newest one — Memory Bank's `update_time` isn't reliably populated on reads,
+    which otherwise let a stale record (e.g. an old cart item) win a tie.
+    """
+    record = {**record, "key": key, "_saved_at": time.time()}
     if _use_memory_bank() and user_id:
         if _bank_remember(user_id, tier, key, record, ttl_seconds):
             return

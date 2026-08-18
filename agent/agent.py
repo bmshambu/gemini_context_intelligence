@@ -37,6 +37,14 @@ _CLEAR_PHRASES = (
     "forget everything", "clear everything", "start fresh demo", "wipe memory",
 )
 
+# Clear-cart phrases (deterministic) — wipe only the in-progress order (task tier),
+# keep the profile. Covers "start over" / "fresh start" so a fresh start empties the cart.
+_CLEAR_CART_PHRASES = (
+    "clear my cart", "clear cart", "clear the cart", "empty cart", "empty my cart",
+    "reset cart", "reset my cart", "new cart", "new order", "start a new order",
+    "start over", "start fresh", "fresh start", "remove everything from my cart",
+)
+
 
 # ── identity ─────────────────────────────────────────────────────────────────
 def _uid(ctx) -> str | None:
@@ -301,6 +309,16 @@ def set_payment_method(method: str, tool_context: ToolContext = None) -> dict:
     return {"status": "saved", "payment_method": norm, "next": "confirm"}
 
 
+def clear_cart(tool_context: ToolContext = None) -> dict:
+    """Empty the shopper's in-progress cart / order (temporary memory only — keeps
+    their profile). Call whenever they want to clear the cart, start over, or begin
+    a fresh order."""
+    order_mod.clear_order(_uid(tool_context))
+    if tool_context:
+        tool_context.state["shopping_for"] = None  # drop any gift-recipient lens
+    return {"status": "cart_cleared"}
+
+
 def confirm_order(tool_context: ToolContext = None) -> dict:
     """Step 4 → 5: finalize the order (demo only — no real payment). Returns the
     order id to show the shopper."""
@@ -329,6 +347,11 @@ def _latest_user_text(callback_context) -> str:
 def _wants_clear(text: str) -> bool:
     t = (text or "").lower()
     return any(phrase in t for phrase in _CLEAR_PHRASES)
+
+
+def _wants_clear_cart(text: str) -> bool:
+    t = (text or "").lower()
+    return any(phrase in t for phrase in _CLEAR_CART_PHRASES)
 
 
 def _maybe_identity(content, uid) -> None:
@@ -368,6 +391,15 @@ def _after_model(callback_context: CallbackContext, llm_response: LlmResponse):
         _maybe_identity(content, uid)
         return llm_response
 
+    # Clear-cart — deterministic so "clear my cart" / "start over" / "fresh start"
+    # reliably empties the in-progress order (task memory) while keeping the profile.
+    if _wants_clear_cart(_latest_user_text(callback_context)):
+        order_mod.clear_order(uid)
+        callback_context.state["shopping_for"] = None
+        _set_text(content, "🛒 **Cart cleared** — fresh start! What would you like to shop for?")
+        _maybe_identity(content, uid)
+        return llm_response
+
     # A pending price-drop alert was just delivered as text → clear it so a returning
     # shopper sees it once, not on every turn.
     if callback_context.state.get("_alerts_pending", False):
@@ -400,7 +432,8 @@ root_agent = LlmAgent(
         "preference change — pass only what changed, use the currency arg for a currency change); "
         "browse_for (when they're shopping for someone ELSE like their kid or wife — pass that "
         "person's gender/age; recipient='myself' switches back); select_product; "
-        "set_shipping_address; set_payment_method; confirm_order.\n"
+        "set_shipping_address; set_payment_method; confirm_order; clear_cart (empty the "
+        "in-progress order when they want to clear their cart or start a new one).\n"
         "\n"
         "Important behaviours: (a) after ANY preference change that affects recommendations, "
         "IMMEDIATELY show the updated picks from [Context] in the SAME reply — never say you'll "
@@ -413,7 +446,7 @@ root_agent = LlmAgent(
         "already in the picks list."
     ),
     tools=[set_preferences, recommend_products, browse_for, select_product,
-           set_shipping_address, set_payment_method, confirm_order],
+           set_shipping_address, set_payment_method, confirm_order, clear_cart],
     before_model_callback=_inject_context,
     after_model_callback=_after_model,
 )

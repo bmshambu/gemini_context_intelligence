@@ -26,12 +26,16 @@ STEP_NAME = {
 
 
 def _ts(r: dict) -> float:
+    # Our own write stamp is the reliable ordering key; fall back to Memory Bank
+    # update_time, then the mock's _created.
+    if r.get("_saved_at") is not None:
+        return float(r["_saved_at"])
     ut = r.get("_update_time")
     if ut is not None:
         try:
             return ut.timestamp()
         except Exception:  # noqa: BLE001
-            return 0.0
+            pass
     return float(r.get("_created", 0) or 0)
 
 
