@@ -44,7 +44,12 @@ def scan_user(user_id: str, drop_pct: float, product: str = "", old_price: str =
 def main() -> None:
     users = [u.strip() for u in os.getenv("WATCH_USER", "").split(",") if u.strip()]
     if not users:
-        print("[watcher] WATCH_USER not set — nothing to do.")
+        # No fixed user → discover real GE shoppers (with carts) from Memory Bank.
+        users = mc.list_watch_users()
+        print(f"[watcher] WATCH_USER not set — watching {len(users)} shopper(s) "
+              f"discovered from Memory Bank: {users}")
+    if not users:
+        print("[watcher] No shoppers to watch (no carts in Memory Bank).")
         return
     drop_pct = float(os.getenv("DROP_PCT", "20"))
     product = os.getenv("WATCH_PRODUCT", "")

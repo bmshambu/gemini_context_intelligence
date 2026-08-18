@@ -84,6 +84,24 @@ def write_alert(user_id, product_id, product_name, old_price, new_price, drop_pc
             print(f"[watcher] cleanup delete failed for {nm}: {e}")
 
 
+def list_watch_users() -> list[str]:
+    """Discover the shoppers to watch straight from Memory Bank — every user_id
+    that has an in-progress order (task tier). This is how real GE users are found
+    without a hardcoded WATCH_USER: GE stores each shopper's cart under their real
+    email (user_id), so we just read those emails back."""
+    client = _client()
+    users = set()
+    for m in client.agent_engines.memories.list(name=_engine_name()):
+        scope = getattr(m, "scope", None) or {}
+        fact = getattr(m, "fact", "") or ""
+        if (scope.get("app_name") == APP_NAME and scope.get("tier") == TIER_TASK
+                and fact.startswith(FACT_PREFIX)):
+            uid = scope.get("user_id")
+            if uid:
+                users.add(uid)
+    return sorted(users)
+
+
 def scale_price(display: str, factor: float) -> str:
     """Scale the number inside a currency string, keeping its symbol/format.
     '₹12,367' * 0.8 → '₹9,894';  '$149' * 0.8 → '$119'."""
