@@ -29,7 +29,7 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 
-from . import alerts, catalogue, order as order_mod, preferences, store
+from . import alerts, catalogue, order as order_mod, preferences, store, trail
 
 # Demo-reset phrases (deterministic — reliable for a live demo, not LLM-judged).
 _CLEAR_PHRASES = (
@@ -201,8 +201,34 @@ def _inject_context(callback_context: CallbackContext, llm_request: LlmRequest):
     alert_list = alerts.get_alerts(uid)
     if alert_list:
         callback_context.state["_alerts_pending"] = True
-    llm_request.append_instructions(
-        [_shopping_context(uid, first_turn, shopping_for, alert_list)])
+    # Remember the products shown this turn (in order) so a "number" pick can be
+    # resolved deterministically in _after_model even if the LLM misses select_product.
+    prefs = preferences.get_preferences(uid)
+    order = order_mod.get_order(uid)
+    active = order if order and order.get("status") == "shopping" else None
+    if preferences.is_complete(prefs) and (not active or active.get("step", 1) <= 1):
+        if shopping_for:
+            recs = catalogue.recommend(prefs, gender=shopping_for.get("gender", ""),
+                                       age_group=shopping_for.get("age_group", "any"),
+                                       interests=shopping_for.get("interests", []))
+        else:
+            recs = catalogue.recommend(prefs)
+        callback_context.state["last_recs"] = [p["id"] for p in recs]
+
+    notes = [_shopping_context(uid, first_turn, shopping_for, alert_list)]
+    # On return with a cart, hand the LLM the recent conversation trail so it can
+    # RECONCILE a possibly-stale cart against what the shopper actually asked for —
+    # the catch-all for picks that both the tool call and the deterministic catch missed.
+    if first_turn and active:
+        msgs = trail.get_messages(uid)
+        if msgs:
+            notes.append(
+                "[Recent intent] The shopper's recent messages (oldest→newest): "
+                + "  ·  ".join(msgs) + f".  Their cart currently holds "
+                f"'{active.get('product_name')}'. If those messages clearly show they moved "
+                "to a DIFFERENT product than what's in the cart, briefly confirm and call "
+                "select_product to correct it before continuing. Otherwise ignore this.")
+    llm_request.append_instructions(notes)
     return None
 
 
@@ -313,18 +339,24 @@ def clear_cart(tool_context: ToolContext = None) -> dict:
     """Empty the shopper's in-progress cart / order (temporary memory only — keeps
     their profile). Call whenever they want to clear the cart, start over, or begin
     a fresh order."""
-    order_mod.clear_order(_uid(tool_context))
+    uid = _uid(tool_context)
+    order_mod.clear_order(uid)
+    trail.clear(uid)  # fresh start — drop the intent trail too
     if tool_context:
         tool_context.state["shopping_for"] = None  # drop any gift-recipient lens
+        tool_context.state["last_recs"] = []
     return {"status": "cart_cleared"}
 
 
 def confirm_order(tool_context: ToolContext = None) -> dict:
     """Step 4 → 5: finalize the order (demo only — no real payment). Returns the
     order id to show the shopper."""
-    rec = order_mod.confirm(_uid(tool_context))
+    uid = _uid(tool_context)
+    rec = order_mod.confirm(uid)
+    trail.clear(uid)  # order placed — the shopping trail is done
     if tool_context:  # next order defaults back to shopping for themselves
         tool_context.state["shopping_for"] = None  # ADK State has no .pop()
+        tool_context.state["last_recs"] = []
     return {"status": "confirmed", "order_id": rec.get("order_id"),
             "product": rec.get("product_name")}
 
@@ -364,6 +396,58 @@ def _maybe_identity(content, uid) -> None:
             return
 
 
+def _match_product(text: str, rec_ids: list[str]):
+    """Resolve a shopper's typed pick to a catalogue product — a shown item whose base
+    name appears in the message first, then any catalogue product it names. Returns a
+    product dict or None. Ignores short/number-only text (handled as a number pick)."""
+    t = (text or "").lower().strip()
+    if len(t) < 4 or not any(c.isalpha() for c in t):
+        return None
+    for pid in rec_ids or []:
+        p = catalogue.get(pid)
+        if not p:
+            continue
+        base = p["name"].split("(")[0].strip().lower()  # "Yoga Mat (Eco Cork)" -> "yoga mat"
+        if base and base in t:
+            return p
+    return catalogue.get(text)
+
+
+def _catch_product_selection(callback_context, uid) -> None:
+    """Deterministic safety net: if the shopper clearly names/numbers a product while
+    choosing, write the cart in code — so a missed select_product tool call can't leave
+    a stale item. The cart stays the reliable source of truth."""
+    prefs = preferences.get_preferences(uid)
+    if not preferences.is_complete(prefs):
+        return
+    order = order_mod.get_order(uid)
+    if order and order.get("status") == "confirmed":
+        return
+    step = (order or {}).get("step", 1)
+    text = _latest_user_text(callback_context).strip()
+    if not text:
+        return
+
+    product = None
+    if step <= 1:  # number pick maps to the products shown this turn
+        token = text.lower().replace("number", "").strip().lstrip("#").rstrip(".").strip()
+        if token.isdigit():
+            recs = callback_context.state.get("last_recs") or []
+            i = int(token) - 1
+            if 0 <= i < len(recs):
+                product = catalogue.get(recs[i])
+    if product is None and step <= 2:  # concise name pick
+        product = _match_product(text, callback_context.state.get("last_recs") or [])
+    if not product:
+        return
+    if order and order.get("product_id") == product["id"]:
+        return  # already the current item — nothing to fix
+
+    price = catalogue.format_price(product["price_usd"], prefs)
+    order_mod.set_product(uid, product["id"], product["name"], price)
+    print(f"[catch] cart set to {product['name']} for {uid!r}")
+
+
 def _after_model(callback_context: CallbackContext, llm_response: LlmResponse):
     if llm_response.partial:
         return None
@@ -395,10 +479,20 @@ def _after_model(callback_context: CallbackContext, llm_response: LlmResponse):
     # reliably empties the in-progress order (task memory) while keeping the profile.
     if _wants_clear_cart(_latest_user_text(callback_context)):
         order_mod.clear_order(uid)
+        trail.clear(uid)
         callback_context.state["shopping_for"] = None
+        callback_context.state["last_recs"] = []
         _set_text(content, "🛒 **Cart cleared** — fresh start! What would you like to shop for?")
         _maybe_identity(content, uid)
         return llm_response
+
+    # Deterministic product-catch — keep the cart in sync with the shopper's pick even
+    # if the LLM missed calling select_product (the reported stale-cart bug).
+    _catch_product_selection(callback_context, uid)
+
+    # Record the shopper's message in the conversation trail (deterministic safety net,
+    # reconciled on return) — after the catch, so the catch acts on the current turn.
+    trail.append_message(uid, _latest_user_text(callback_context))
 
     # A pending price-drop alert was just delivered as text → clear it so a returning
     # shopper sees it once, not on every turn.

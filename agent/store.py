@@ -110,7 +110,7 @@ def _bank_recall(user_id: str, tier: str) -> list[dict]:
         return _mock_recall(user_id, tier)
 
 
-def _bank_remember(user_id, tier, key, record, ttl_seconds) -> bool:
+def _bank_remember(user_id, tier, key, record, ttl_seconds, wait_for_completion=True) -> bool:
     try:
         client = _client()
         old = [
@@ -118,7 +118,7 @@ def _bank_remember(user_id, tier, key, record, ttl_seconds) -> bool:
             for m in _iter_memories(client, user_id, tier)
             if getattr(m, "name", None) and (_parse(m.fact) or {}).get("key") == key
         ]
-        config: dict = {"wait_for_completion": True}
+        config: dict = {"wait_for_completion": wait_for_completion}
         if ttl_seconds:
             config["ttl"] = f"{int(ttl_seconds)}s"
         client.agent_engines.memories.create(
@@ -179,7 +179,7 @@ def _mock_remember(user_id, tier, key, record) -> None:
 
 
 # ── public API ───────────────────────────────────────────────────────────────
-def remember(user_id, tier, key, record, ttl_seconds=None) -> None:
+def remember(user_id, tier, key, record, ttl_seconds=None, wait_for_completion=True) -> None:
     """Upsert one record (keep-latest per `key`) in the given tier.
 
     Stamps `_saved_at` (our own write time) into the record so readers can pick the
@@ -188,7 +188,7 @@ def remember(user_id, tier, key, record, ttl_seconds=None) -> None:
     """
     record = {**record, "key": key, "_saved_at": time.time()}
     if _use_memory_bank() and user_id:
-        if _bank_remember(user_id, tier, key, record, ttl_seconds):
+        if _bank_remember(user_id, tier, key, record, ttl_seconds, wait_for_completion):
             return
     _mock_remember(user_id or "*", tier, key, record)
 

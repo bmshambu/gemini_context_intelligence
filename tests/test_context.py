@@ -11,7 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent import (  # noqa: E402
-    agent, alerts, catalogue, order as order_mod, preferences, store,
+    agent, alerts, catalogue, order as order_mod, preferences, store, trail,
 )
 
 
@@ -297,6 +297,65 @@ def test_clear_cart_phrases_detected_but_distinct_from_memory_reset():
     assert not agent._wants_clear_cart("show me the smartwatch")
     # full memory reset is a different intent, not a cart-clear
     assert agent._wants_clear("clear memory") and not agent._wants_clear_cart("clear memory")
+
+
+class _Part:
+    def __init__(self, text):
+        self.text = text
+
+
+class _CB:
+    """Minimal callback_context for the deterministic product-catch."""
+    def __init__(self, uid, text, last_recs=None):
+        self.user_id = uid
+        self.state = {"last_recs": last_recs or []}
+        self.user_content = type("C", (), {"parts": [_Part(text)]})()
+
+
+def test_deterministic_catch_number_pick_updates_cart():
+    uid = "catch1@x.com"
+    prefs = preferences.set_preferences(uid, country="India", interests=["fitness"])
+    rec_ids = [p["id"] for p in catalogue.recommend(prefs)]
+    agent._catch_product_selection(_CB(uid, "2", last_recs=rec_ids), uid)
+    o = order_mod.get_order(uid)
+    assert o and o["product_id"] == rec_ids[1]        # "2" → the 2nd shown product
+
+
+def test_deterministic_catch_name_reselects_over_stale():
+    uid = "catch2@x.com"
+    prefs = preferences.set_preferences(uid, country="India", interests=["fitness"])
+    rec_ids = [p["id"] for p in catalogue.recommend(prefs)]
+    order_mod.set_product(uid, "p04", "Building Blocks Set (200 pcs)", "₹2,407")  # stale item
+    agent._catch_product_selection(_CB(uid, "yoga mat", last_recs=rec_ids), uid)
+    assert "Yoga Mat" in order_mod.get_order(uid)["product_name"]  # replaced deterministically
+
+
+def test_trail_records_intent_bounded_and_deduped():
+    u = "trail@x.com"
+    trail.append_message(u, "hi")
+    trail.append_message(u, "hi")                     # consecutive dup skipped
+    trail.append_message(u, "actually the yoga mat")
+    assert trail.get_messages(u) == ["hi", "actually the yoga mat"]
+    for i in range(12):
+        trail.append_message(u, f"m{i}")
+    assert len(trail.get_messages(u)) <= 8            # rolling window bounded
+
+
+def test_trail_is_separate_from_order_and_cleared_on_fresh_start():
+    u = "trail2@x.com"
+    order_mod.set_product(u, "p04", "Building Blocks", "$29")
+    trail.append_message(u, "actually the yoga mat")   # missed-pick intent survives here
+    assert order_mod.get_order(u)["product_name"] == "Building Blocks"   # trail doesn't corrupt order
+    assert "actually the yoga mat" in trail.get_messages(u)
+    agent.clear_cart(tool_context=_TC(u))
+    assert trail.get_messages(u) == [] and order_mod.get_order(u) is None  # both wiped
+
+
+def test_deterministic_catch_ignores_non_product_text():
+    uid = "catch3@x.com"
+    preferences.set_preferences(uid, country="India", interests=["fitness"])
+    agent._catch_product_selection(_CB(uid, "yes please", last_recs=[]), uid)
+    assert order_mod.get_order(uid) is None            # no false selection
 
 
 def test_clear_memory_wipes_all_tiers():
