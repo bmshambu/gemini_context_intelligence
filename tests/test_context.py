@@ -11,8 +11,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from agent import (  # noqa: E402
-    agent, alerts, catalogue, order as order_mod, preferences, store, trail,
+    agent, alerts, catalogue, order as order_mod, preferences, store, trail, watches,
 )
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "watch_handler"))
+import conditions as watch_conditions  # noqa: E402  (watch_handler/conditions.py)
 
 
 def setup_function(_fn=None):
@@ -356,6 +359,52 @@ def test_deterministic_catch_ignores_non_product_text():
     preferences.set_preferences(uid, country="India", interests=["fitness"])
     agent._catch_product_selection(_CB(uid, "yes please", last_recs=[]), uid)
     assert order_mod.get_order(uid) is None            # no false selection
+
+
+def test_watch_lifecycle_all_six_verbs():
+    tc = _TC("watch@x.com")
+    preferences.set_preferences("watch@x.com", country="India", interests=["fitness"])
+    # create
+    r = agent.create_watch("Yoga Mat", condition_type="pct_drop", pct="15", tool_context=tc)
+    assert r["status"] == "watching" and r["condition"] == {"type": "pct_drop", "pct": 15.0}
+    # list
+    lst = agent.list_watches(tool_context=tc)
+    assert lst["count"] == 1 and lst["watches"][0]["status"] == "active"
+    # pause
+    assert agent.pause_watch("Yoga Mat", tool_context=tc)["status"] == "paused"
+    assert agent.list_watches(tool_context=tc)["watches"][0]["status"] == "paused"
+    # resume
+    assert agent.resume_watch("Yoga Mat", tool_context=tc)["status"] == "resumed"
+    assert agent.list_watches(tool_context=tc)["watches"][0]["status"] == "active"
+    # update the condition
+    up = agent.update_watch("Yoga Mat", condition_type="target_price", target="2500", tool_context=tc)
+    assert up["condition"] == {"type": "target_price", "target": 2500.0}
+    # stop → gone
+    assert agent.stop_watch("Yoga Mat", tool_context=tc)["status"] == "stopped"
+    assert agent.list_watches(tool_context=tc)["count"] == 0
+
+
+def test_watch_needs_condition_and_respects_per_user_limit():
+    tc = _TC("wl@x.com")
+    preferences.set_preferences("wl@x.com", country="India", interests=["tech"])
+    # missing pct → the agent asks for a condition instead of creating a bad watch
+    assert agent.create_watch("Yoga Mat", condition_type="pct_drop", tool_context=tc)["status"] == "need_condition"
+    # fill the per-user cap with distinct products, then the next is refused
+    for pid in [p["id"] for p in catalogue.PRODUCTS[:watches.MAX_WATCHES_PER_USER]]:
+        watches.create_watch("wl@x.com", pid, pid, "₹100", {"type": "any_drop"})
+    # a product NOT already watched → refused because the cap is full
+    over = agent.create_watch("Ergonomic Reading Glasses", condition_type="any_drop", tool_context=tc)
+    assert over["status"] == "limit_reached"
+
+
+def test_handler_condition_evaluation():
+    base, current = 3237.0, 3237.0 * 0.8   # simulated 20% drop
+    assert watch_conditions.condition_met({"type": "pct_drop", "pct": 15}, base, current)      # 20% > 15%
+    assert not watch_conditions.condition_met({"type": "pct_drop", "pct": 25}, base, current)  # 20% < 25%
+    assert watch_conditions.condition_met({"type": "target_price", "target": 2600}, base, current)
+    assert not watch_conditions.condition_met({"type": "target_price", "target": 2000}, base, current)
+    assert watch_conditions.condition_met({"type": "any_drop"}, base, current)
+    assert watch_conditions.condition_met({"type": "back_in_stock"}, base, current)
 
 
 def test_clear_memory_wipes_all_tiers():

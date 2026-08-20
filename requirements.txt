@@ -8,4 +8,5 @@ a2a-sdk>=0.3.4,<0.4
 python-dotenv>=1.0.0
 google-cloud-secret-manager
 google-cloud-storage
+google-cloud-tasks
 cloudpickle

@@ -32,7 +32,8 @@ APP_NAME = os.getenv("MEMORY_APP_NAME", "shopping_companion")
 TIER_PERSONA = "persona"
 TIER_TASK = "task"
 TIER_ALERT = "alert"                       # proactive alerts (price drops) awaiting the shopper
-TIERS = (TIER_PERSONA, TIER_TASK, TIER_ALERT)
+TIER_WATCH = "watch"                        # chat-created price watches (one per product)
+TIERS = (TIER_PERSONA, TIER_TASK, TIER_ALERT, TIER_WATCH)
 TASK_TTL_SECONDS = int(os.getenv("TASK_TTL_SECONDS", str(3 * 24 * 3600)))  # 3 days
 
 _FACT_PREFIX = "CTXMEM1 "

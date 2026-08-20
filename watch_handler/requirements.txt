@@ -1,0 +1,5 @@
+# Watch handler (Cloud Run service) — Memory Bank + Cloud Tasks + a tiny web server.
+google-cloud-aiplatform[agent_engines]==1.148.1
+google-cloud-tasks
+flask
+gunicorn

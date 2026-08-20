@@ -29,7 +29,7 @@ from google.adk.models.llm_request import LlmRequest
 from google.adk.models.llm_response import LlmResponse
 from google.adk.tools import ToolContext
 
-from . import alerts, catalogue, order as order_mod, preferences, store, trail
+from . import alerts, catalogue, order as order_mod, preferences, store, tasks_client, trail, watches
 
 # Demo-reset phrases (deterministic — reliable for a live demo, not LLM-judged).
 _CLEAR_PHRASES = (
@@ -335,6 +335,127 @@ def set_payment_method(method: str, tool_context: ToolContext = None) -> dict:
     return {"status": "saved", "payment_method": norm, "next": "confirm"}
 
 
+# ── watch tools (chat-driven long-running price watches) ─────────────────────
+_CONDITION_LABEL = {
+    "pct_drop": "a price drop of {pct}%",
+    "target_price": "the price reaching {target}",
+    "any_drop": "any price drop",
+    "back_in_stock": "the item coming back in stock",
+}
+
+
+def _build_condition(condition_type: str, pct: str, target: str) -> dict | None:
+    c = (condition_type or "").strip().lower()
+    if c in ("pct_drop", "percent", "percentage") and str(pct).strip():
+        try:
+            return {"type": "pct_drop", "pct": float(pct)}
+        except ValueError:
+            return None
+    if c in ("target_price", "target", "under") and str(target).strip():
+        try:
+            return {"type": "target_price", "target": float(target)}
+        except ValueError:
+            return None
+    if c in ("any_drop", "any", "drop"):
+        return {"type": "any_drop"}
+    if c in ("back_in_stock", "stock", "restock", "in_stock"):
+        return {"type": "back_in_stock"}
+    return None
+
+
+def create_watch(product: str, condition_type: str = "pct_drop", pct: str = "",
+                 target: str = "", tool_context: ToolContext = None) -> dict:
+    """Set up a background WATCH on a product's price. Confirm the parameters with the
+    shopper first (offer the menu: % drop / target price / any drop / back in stock).
+    The watch runs in the background and alerts them when they next return.
+
+    Args:
+        product: product name to watch, e.g. "Yoga Mat".
+        condition_type: pct_drop | target_price | any_drop | back_in_stock.
+        pct: for pct_drop, the percentage as a number, e.g. "15".
+        target: for target_price, the price threshold (number in their currency), e.g. "2500".
+    """
+    uid = _uid(tool_context)
+    prefs = preferences.get_preferences(uid)
+    p = catalogue.get(product)
+    if not p:
+        return {"status": "not_found", "product": product}
+    existing = watches.get_watch(uid, p["id"])
+    if not existing and watches.count_active(uid) >= watches.MAX_WATCHES_PER_USER:
+        return {"status": "limit_reached", "max": watches.MAX_WATCHES_PER_USER}
+    condition = _build_condition(condition_type, pct, target)
+    if not condition:
+        return {"status": "need_condition",
+                "options": ["pct_drop (needs pct)", "target_price (needs target)",
+                            "any_drop", "back_in_stock"]}
+    price_display = catalogue.format_price(p["price_usd"], prefs)
+    rec = watches.create_watch(uid, p["id"], p["name"], price_display, condition)
+    task = tasks_client.enqueue_check(uid, p["id"], rec["interval_seconds"])
+    if task:
+        watches.update_watch(uid, p["id"], pending_task_name=task)
+    return {"status": "watching", "product": p["name"], "price": price_display,
+            "condition": condition}
+
+
+def list_watches(tool_context: ToolContext = None) -> dict:
+    """List the shopper's current watches (what they're watching and its status)."""
+    ws = watches.list_watches(_uid(tool_context))
+    return {"count": len(ws), "watches": [
+        {"product": w["product_name"], "price": w.get("price_display"),
+         "condition": w.get("condition"), "status": w.get("status")} for w in ws]}
+
+
+def pause_watch(product: str, tool_context: ToolContext = None) -> dict:
+    """Pause a watch — it stops checking until resumed."""
+    uid = _uid(tool_context)
+    p = catalogue.get(product)
+    w = watches.get_watch(uid, p["id"]) if p else None
+    if not w:
+        return {"status": "not_found", "product": product}
+    tasks_client.delete_task(w.get("pending_task_name"))
+    watches.update_watch(uid, p["id"], status="paused", pending_task_name=None)
+    return {"status": "paused", "product": p["name"]}
+
+
+def resume_watch(product: str, tool_context: ToolContext = None) -> dict:
+    """Resume a paused watch — restarts its background checks."""
+    uid = _uid(tool_context)
+    p = catalogue.get(product)
+    w = watches.get_watch(uid, p["id"]) if p else None
+    if not w:
+        return {"status": "not_found", "product": product}
+    watches.update_watch(uid, p["id"], status="active")
+    task = tasks_client.enqueue_check(uid, p["id"], w.get("interval_seconds") or watches.DEFAULT_INTERVAL)
+    watches.update_watch(uid, p["id"], pending_task_name=task)
+    return {"status": "resumed", "product": p["name"]}
+
+
+def stop_watch(product: str, tool_context: ToolContext = None) -> dict:
+    """Stop (terminate) a watch entirely and remove it."""
+    uid = _uid(tool_context)
+    p = catalogue.get(product)
+    w = watches.get_watch(uid, p["id"]) if p else None
+    if not w:
+        return {"status": "not_found", "product": product}
+    tasks_client.delete_task(w.get("pending_task_name"))
+    watches.delete_watch(uid, p["id"])
+    return {"status": "stopped", "product": p["name"]}
+
+
+def update_watch(product: str, condition_type: str = "", pct: str = "", target: str = "",
+                 tool_context: ToolContext = None) -> dict:
+    """Change a watch's alert condition (e.g. from 15% to 10%, or to a target price)."""
+    uid = _uid(tool_context)
+    p = catalogue.get(product)
+    w = watches.get_watch(uid, p["id"]) if p else None
+    if not w:
+        return {"status": "not_found", "product": product}
+    cond = _build_condition(condition_type, pct, target) if condition_type else None
+    if cond:
+        watches.update_watch(uid, p["id"], condition=cond)
+    return {"status": "updated", "product": p["name"], "condition": cond or w.get("condition")}
+
+
 def clear_cart(tool_context: ToolContext = None) -> dict:
     """Empty the shopper's in-progress cart / order (temporary memory only — keeps
     their profile). Call whenever they want to clear the cart, start over, or begin
@@ -529,6 +650,15 @@ root_agent = LlmAgent(
         "set_shipping_address; set_payment_method; confirm_order; clear_cart (empty the "
         "in-progress order when they want to clear their cart or start a new one).\n"
         "\n"
+        "WATCHES (background price monitoring). When the shopper asks you to watch/track a "
+        "product's price, first CONFIRM and offer the menu — you can alert them on: a % price "
+        "drop (e.g. 15%), a target price (e.g. under ₹2,500), any drop, or when it's back in "
+        "stock — and note you'll tell them when they next return. If they ask for something you "
+        "can't watch, say what you CAN watch and steer them there. Once the parameters are clear, "
+        "call create_watch. Also handle: list_watches ('what am I watching?'), pause_watch, "
+        "resume_watch, stop_watch ('stop watching X'), and update_watch (change the threshold). "
+        "Never mention tools.\n"
+        "\n"
         "Important behaviours: (a) after ANY preference change that affects recommendations, "
         "IMMEDIATELY show the updated picks from [Context] in the SAME reply — never say you'll "
         "'go find' them, just list them. (b) At each checkout step, actually CALL the matching "
@@ -540,7 +670,8 @@ root_agent = LlmAgent(
         "already in the picks list."
     ),
     tools=[set_preferences, recommend_products, browse_for, select_product,
-           set_shipping_address, set_payment_method, confirm_order, clear_cart],
+           set_shipping_address, set_payment_method, confirm_order, clear_cart,
+           create_watch, list_watches, pause_watch, resume_watch, stop_watch, update_watch],
     before_model_callback=_inject_context,
     after_model_callback=_after_model,
 )
